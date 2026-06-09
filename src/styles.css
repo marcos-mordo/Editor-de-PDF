@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family:
+      'Amazon Ember', 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    background: #F3F3F3;
+    color: #0F1111;
+  }
+
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #F3F3F3;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #C7CDD1;
+    border-radius: 6px;
+    border: 2px solid #F3F3F3;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #888C8C;
+  }
+}
+
+@layer components {
+  /* Amazon-style buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none;
+    padding: 6px 12px;
+  }
+
+  /* Yellow primary CTA (the iconic "Buy Now" style) */
+  .btn-primary {
+    @apply btn text-ink;
+    background: linear-gradient(to bottom, #F7DFA5, #F0C14B);
+    border: 1px solid #A88734;
+    border-color: #9C7E31 #90742D #846A29;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    color: #111;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(to bottom, #F5D78E, #EEB933);
+    border-color: #9C7E31 #90742D #846A29;
+  }
+
+  /* Modern Amazon yellow (FFDB14) flat */
+  .btn-cta {
+    @apply btn text-ink;
+    background: #FFD814;
+    border: 1px solid #FCD200;
+    color: #0F1111;
+    font-weight: 500;
+  }
+  .btn-cta:hover:not(:disabled) {
+    background: #F7CA00;
+    border-color: #F2C200;
+  }
+
+  /* Orange (secondary CTA) */
+  .btn-orange {
+    @apply btn text-ink;
+    background: #FFA41C;
+    border: 1px solid #FF8F00;
+    color: #0F1111;
+    font-weight: 500;
+  }
+  .btn-orange:hover:not(:disabled) {
+    background: #FA8900;
+  }
+
+  /* Light gray secondary */
+  .btn-secondary {
+    @apply btn text-ink;
+    background: #F0F2F2;
+    border: 1px solid #D5D9D9;
+    box-shadow: 0 2px 5px 0 rgba(213, 217, 217, 0.5);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: #E3E6E6;
+  }
+
+  /* Ghost on dark header */
+  .btn-nav {
+    @apply btn-secondary;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #FFFFFF;
+    box-shadow: none;
+  }
+  .btn-nav:hover:not(:disabled) {
+    background: transparent;
+    border: 1px solid #FFFFFF;
+  }
+
+  /* Ghost (light) */
+  .btn-ghost {
+    @apply btn text-ink;
+    background: transparent;
+    border: 1px solid transparent;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: #F0F2F2;
+    border-color: #D5D9D9;
+  }
+
+  /* Danger */
+  .btn-danger {
+    @apply btn;
+    background: #C40000;
+    border: 1px solid #A50000;
+    color: white;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #A50000;
+  }
+
+  /* Toolbar icon button (nav, dark bg) */
+  .tool-btn-nav {
+    @apply flex h-9 w-9 items-center justify-center rounded transition-all text-white/90 hover:text-white;
+    border: 1px solid transparent;
+  }
+  .tool-btn-nav:hover {
+    border-color: #FFFFFF;
+  }
+  .tool-btn-nav:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Toolbar icon button (palette - light) */
+  .tool-btn {
+    @apply flex h-9 w-9 items-center justify-center rounded text-ink-secondary hover:text-ink transition-colors;
+  }
+  .tool-btn:hover {
+    background: #E7E9EC;
+  }
+  .tool-btn-active {
+    background: #FFD814 !important;
+    color: #0F1111 !important;
+    border: 1px solid #FCD200;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full rounded text-sm text-ink;
+    background: #FFFFFF;
+    border: 1px solid #888C8C;
+    padding: 6px 10px;
+    box-shadow: inset 0 1px 2px rgba(213, 217, 217, 0.5);
+  }
+  .input:focus {
+    @apply outline-none;
+    border-color: #E77600;
+    box-shadow: 0 0 3px 2px rgba(228, 121, 17, 0.5);
+  }
+
+  /* Cards / panels */
+  .panel {
+    @apply bg-page rounded-lg border border-page-border;
+  }
+
+  /* Link */
+  .a-link {
+    color: #007185;
+    cursor: pointer;
+  }
+  .a-link:hover {
+    color: #C7511F;
+    text-decoration: underline;
+  }
+}
+
+/* PDF page rendering — keep the page white with a soft drop shadow */
+.pdf-page-canvas {
+  display: block;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 1px solid #D5D9D9;
+}
+
+/* Annotation layer overlay */
+.annotation-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.annotation-layer.active {
+  pointer-events: auto;
+}
+
+/* Hide scroll on draggable items */
+.drag-handle {
+  cursor: grab;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Selection highlight color (Amazon blue) */
+::selection {
+  background: #007185;
+  color: white;
+}

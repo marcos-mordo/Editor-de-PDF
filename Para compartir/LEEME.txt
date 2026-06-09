@@ -1,0 +1,127 @@
+==============================================
+  EDITOR DE PDF v0.1
+  Alternativa libre a Adobe Acrobat
+==============================================
+
+ESTA VERSION ARREGLA EL PROBLEMA DE PANTALLA BLANCA AL ABRIR PDFs.
+
+Causas reales encontradas y corregidas:
+
+ 1. Bucle infinito de React al cargar un PDF
+    (selector de Zustand creando array nuevo cada render).
+
+ 2. PDF.js worker no se cargaba desde rutas file://
+    porque Chromium bloquea modulos ES desde el disco
+    (problema conocido de Electron + PDF.js v4).
+    El worker ahora se inyecta inline via Blob URL.
+
+Verificado con tests automatizados sobre el .exe empaquetado:
+   - 8/8 smoke tests (bridge, IPC, react, DOM)
+   - 3/3 pixel tests (PDF.js dibuja contenido real)
+   - PDF de prueba con texto y rectangulo naranja renderiza
+     correctamente en pantalla.
+
+
+En esta carpeta tienes dos formas de usar Editor de PDF en tu PC.
+Escoge UNA de las dos:
+
+
+-----------------------------------------------
+ OPCION 1: Instalador (recomendada)
+-----------------------------------------------
+Archivo:  "Editor de PDF - Instalador.exe"
+
+- Doble click para instalarlo.
+- Crea acceso directo en el menu Inicio y en el escritorio.
+- Para desinstalar: Panel de control -> Programas -> Editor de PDF.
+
+
+-----------------------------------------------
+ OPCION 2: Portable (sin instalacion)
+-----------------------------------------------
+Archivo:  "Editor de PDF - Portable.exe"
+
+- Solo doble click y se ejecuta.
+- No necesita instalacion ni permisos de administrador.
+- Puedes copiarlo a un USB y llevarlo a cualquier PC.
+
+
+NOTA: Windows mostrara un aviso de "SmartScreen" porque el archivo
+no esta firmado digitalmente (lo cual cuesta ~$300 USD al ano).
+Es seguro: pulsa "Mas informacion" -> "Ejecutar de todas formas".
+
+
+==============================================
+ QUE PUEDES HACER CON ESTA APP
+==============================================
+
+ - Abrir PDFs, hacer zoom, rotar paginas, navegar
+ - Resaltar, subrayar, tachar texto
+ - Anadir notas, dibujos, rectangulos, flechas, formas
+ - Insertar texto encima del PDF
+ - Insertar imagenes (PNG/JPG)
+ - Crear firma manuscrita con el raton y colocarla
+ - Combinar varios PDFs en uno
+ - Dividir un PDF en partes
+ - Reordenar, rotar y eliminar paginas
+ - OCR: reconocer texto en escaneos (espanol, ingles, frances...)
+ - Anadir marcas de agua (texto, diagonal, centrada)
+ - Proteger PDFs con contrasena
+ - Exportar a imagenes PNG, Word (.docx), Excel (.xlsx)
+
+Todo se procesa LOCALMENTE en tu PC. Ningun archivo se envia a internet.
+
+
+==============================================
+ SI ALGO FALLA
+==============================================
+
+La app guarda un log con todo lo que hace en:
+
+    C:\Users\<TU_USUARIO>\.editor-de-pdf\
+
+Dentro encontraras:
+    main.log     - estado del proceso principal de Electron
+    preload.log  - estado del bridge window.api
+
+Tambien puedes abrir esta carpeta desde dentro de la app:
+    Menu Ayuda -> Abrir carpeta de logs
+
+Si la app no funciona, comparte estos logs.
+
+
+==============================================
+ REQUISITOS
+==============================================
+
+ - Windows 10 o superior, 64 bits
+ - 4 GB de RAM (recomendado 8 GB)
+ - 500 MB libres en disco para la app
+ - Si vas a usar OCR, la primera vez descargara el idioma (~20 MB)
+
+
+==============================================
+ PRIVACIDAD
+==============================================
+
+ - NO se envia nada a internet (salvo el modelo de OCR la primera vez)
+ - NO requiere cuenta, login ni activacion
+ - NO tiene suscripcion ni publicidad
+ - Tus PDFs nunca salen de tu computadora
+
+
+==============================================
+ PROBLEMAS COMUNES
+==============================================
+
+ - Si Windows bloquea el archivo:
+   Click derecho -> Propiedades -> marcar "Desbloquear" -> Aceptar
+
+ - Si SmartScreen lo marca como desconocido:
+   Es normal en apps sin firma digital. Pulsa "Mas informacion"
+   y luego "Ejecutar de todas formas".
+
+ - Si la app no abre, comprueba que tu Windows este actualizado
+   y reinicia el equipo.
+
+Disfruta!
