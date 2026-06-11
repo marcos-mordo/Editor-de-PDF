@@ -88,6 +88,8 @@ interface InlineEdit {
   fontFamily: string;
   color: string;
   text: string;
+  /** Original text when editing existing PDF text — used so save can find it in the content stream. */
+  originalText?: string;
   /** "add" = new text. "edit-existing" = replace original PDF text. "edit-annotation" = modify an existing annotation. */
   mode: 'add' | 'edit-existing' | 'edit-annotation';
   annotationId?: string;
@@ -220,8 +222,6 @@ export function AnnotationLayer({
         updateAnnotation(inlineEdit.annotationId, { text });
       }
     } else if (inlineEdit.mode === 'edit-existing') {
-      // Cover original with the surrounding background colour (NOT plain
-      // white) so coloured backgrounds, watermarks and images stay visible.
       const bg = sampleBackgroundColor
         ? sampleBackgroundColor(
             inlineEdit.px,
@@ -231,31 +231,20 @@ export function AnnotationLayer({
           )
         : '#FFFFFF';
       addAnnotation({
-        type: 'rect',
+        type: 'text-replace',
         pageNumber,
-        x: inlineEdit.px - 1,
-        y: inlineEdit.py - 1,
-        width: inlineEdit.pw + 2,
-        height: inlineEdit.ph + 2,
-        color: bg,
+        x: inlineEdit.px,
+        y: inlineEdit.py,
+        width: Math.max(inlineEdit.pw, text.length * inlineEdit.fontSize * 0.55),
+        height: inlineEdit.fontSize + 4,
+        color: inlineEdit.color,
         opacity: 1,
-        strokeWidth: 0,
+        text,
+        oldText: inlineEdit.originalText,
+        backgroundColor: bg,
+        fontSize: inlineEdit.fontSize,
+        fontFamily: inlineEdit.fontFamily,
       });
-      if (text.trim() !== '') {
-        addAnnotation({
-          type: 'text',
-          pageNumber,
-          x: inlineEdit.px,
-          y: inlineEdit.py,
-          width: Math.max(inlineEdit.pw, text.length * inlineEdit.fontSize * 0.55),
-          height: inlineEdit.fontSize + 4,
-          color: inlineEdit.color,
-          opacity: 1,
-          text,
-          fontSize: inlineEdit.fontSize,
-          fontFamily: inlineEdit.fontFamily,
-        });
-      }
     } else {
       // "add" mode
       addAnnotation({
@@ -355,6 +344,7 @@ export function AnnotationLayer({
       fontFamily: 'Helvetica',
       color: '#000000',
       text,
+      originalText: text,
       mode: 'edit-existing',
     });
     return true;
@@ -841,6 +831,56 @@ export function AnnotationLayer({
                 style={{ cursor: 'pointer' }}
               />
             );
+          case 'text-replace': {
+            // Visual preview while viewing — the saved PDF will either
+            // (a) modify the content stream directly (no cover) or
+            // (b) fall back to drawing this cover + text. Either way the
+            // user sees the same result on screen during editing.
+            const bg = a.backgroundColor ?? '#FFFFFF';
+            return (
+              <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
+                <rect
+                  x={s.x - 1}
+                  y={s.y - 1}
+                  width={s.w + 2}
+                  height={s.h + 2}
+                  fill={bg}
+                  opacity={1}
+                />
+                <text
+                  x={s.x}
+                  y={s.y + s.h * 0.8}
+                  fill={a.color}
+                  fontSize={(a.fontSize ?? 14) * zoom}
+                  fontFamily={a.fontFamily ?? 'Helvetica'}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setInlineEdit({
+                      sx: s.x,
+                      sy: s.y,
+                      sw: Math.max(120, s.w),
+                      sh: Math.max(28, s.h),
+                      px: a.x,
+                      py: a.y,
+                      pw: a.width,
+                      ph: a.height,
+                      fontSize: a.fontSize ?? 14,
+                      fontFamily: a.fontFamily ?? 'Helvetica',
+                      color: a.color,
+                      text: a.text ?? '',
+                      originalText: a.oldText ?? a.text,
+                      mode: 'edit-annotation',
+                      annotationId: a.id,
+                    });
+                  }}
+                  style={{ cursor: 'text', userSelect: 'none' }}
+                >
+                  <title>Doble click para editar</title>
+                  {a.text}
+                </text>
+              </g>
+            );
+          }
           default:
             return null;
         }

@@ -9,6 +9,7 @@ import {
 } from 'pdf-lib';
 import { useDocument } from '../../stores/document';
 import { useAnnotations, type Annotation } from '../../stores/annotations';
+import { tryReplaceTextInPage } from './text-replace';
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '');
@@ -80,14 +81,39 @@ export async function savePdfWithEdits(opts?: {
     return f;
   }
 
-  // Burn-in annotations
+  // First pass: handle text-replace annotations by editing the page content
+  // stream directly. When this works the original text is literally replaced
+  // (no cover, no overlay). When it can't (encoding the matcher doesn't
+  // recognise) we mark the annotation as a fallback so the second pass
+  // draws a cover + the new text.
   const annStore = useAnnotations.getState();
+  const fallbackTextReplace = new Set<string>();
+  for (let i = 0; i < doc.pagesOrder.length; i++) {
+    const annotations = annStore.byPage[doc.pagesOrder[i]] ?? [];
+    for (const ann of annotations) {
+      if (ann.type !== 'text-replace') continue;
+      if (!ann.oldText || ann.oldText === ann.text) continue;
+      try {
+        const result = await tryReplaceTextInPage(out, i, ann.oldText, ann.text ?? '');
+        if (!result.success) fallbackTextReplace.add(ann.id);
+      } catch (e) {
+        console.warn('text-replace failed, will use fallback cover', e);
+        fallbackTextReplace.add(ann.id);
+      }
+    }
+  }
+
+  // Second pass: burn-in remaining annotations (and text-replace fallbacks).
   for (let i = 0; i < doc.pagesOrder.length; i++) {
     const origPage = doc.pagesOrder[i];
     const annotations = annStore.byPage[origPage] ?? [];
     if (annotations.length === 0) continue;
     const page = out.getPage(i);
     for (const ann of annotations) {
+      if (ann.type === 'text-replace' && !fallbackTextReplace.has(ann.id)) {
+        // Already handled at the content-stream level.
+        continue;
+      }
       await drawAnnotation(out, page, ann, getFont);
     }
   }
@@ -245,6 +271,34 @@ async function drawAnnotation(
         color,
         opacity,
       });
+      break;
+    }
+    case 'text-replace': {
+      // Fallback path: only reached when content-stream rewriting didn't
+      // match this PDF's encoding. Cover the original area with the sampled
+      // background colour and draw the new text on top.
+      const bg = hexToRgb(ann.backgroundColor ?? '#FFFFFF');
+      page.drawRectangle({
+        x: ann.x - 1,
+        y: ann.y - 1,
+        width: ann.width + 2,
+        height: ann.height + 2,
+        color: bg,
+        opacity: 1,
+        borderWidth: 0,
+      });
+      if (ann.text && ann.text.trim() !== '') {
+        const font = await getFont(ann.fontFamily ?? 'Helvetica');
+        const size = ann.fontSize ?? 14;
+        page.drawText(ann.text, {
+          x: ann.x,
+          y: ann.y,
+          size,
+          font,
+          color,
+          opacity,
+        });
+      }
       break;
     }
     case 'note': {
