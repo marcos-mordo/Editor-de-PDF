@@ -101,6 +101,15 @@ interface InlineEdit {
  * actually select the whole word (and continuous neighbours), not just
  * a single character span — PDF text content is often very granular.
  */
+/** Heuristic: extract bold/italic from a PDF font name like "Inter-Bold". */
+function detectWeightStyle(fontName: string): { bold: boolean; italic: boolean } {
+  const lower = (fontName || '').toLowerCase();
+  return {
+    bold: /bold|black|heavy|demi|semibold/.test(lower),
+    italic: /italic|oblique|slant/.test(lower),
+  };
+}
+
 function findTextRunAt(
   pdfX: number,
   pdfY: number,
@@ -320,17 +329,42 @@ export function AnnotationLayer({
     const p = screenToPdf(sx, sy, width, height, zoom, rotation);
     const run = findTextRunAt(p.x, p.y, textItems);
     if (run.length === 0) return false;
+    const sortedRun = [...run].sort((a, b) => a.x - b.x);
     // Compute combined bounds of the run
-    const minX = Math.min(...run.map((r) => r.x));
-    const maxX = Math.max(...run.map((r) => r.x + r.width));
-    const minY = Math.min(...run.map((r) => r.y));
-    const maxH = Math.max(...run.map((r) => r.height));
+    const minX = Math.min(...sortedRun.map((r) => r.x));
+    const maxX = Math.max(...sortedRun.map((r) => r.x + r.width));
+    const minY = Math.min(...sortedRun.map((r) => r.y));
+    const maxH = Math.max(...sortedRun.map((r) => r.height));
     const pw = maxX - minX;
     const ph = maxH;
     const px = minX;
     const py = minY;
     const screen = pdfRectToScreen(px, py, pw, ph);
-    const text = run.map((r) => r.str).join('');
+    // Reconstruct the text preserving spaces: PDF often splits a single
+    // visible line into multiple text items with no explicit space chars
+    // — the gap between items IS the space. Detect that gap and put a
+    // space back.
+    let text = '';
+    for (let i = 0; i < sortedRun.length; i++) {
+      if (i > 0) {
+        const prev = sortedRun[i - 1];
+        const curr = sortedRun[i];
+        const gap = curr.x - (prev.x + prev.width);
+        const spaceWidth = Math.max(prev.height * 0.2, 1);
+        if (
+          gap >= spaceWidth &&
+          !prev.str.endsWith(' ') &&
+          !curr.str.startsWith(' ')
+        ) {
+          text += ' ';
+        }
+      }
+      text += sortedRun[i].str;
+    }
+    // Pick the dominant font name across the run — we use this to choose a
+    // matching standard font (bold/italic/serif/mono) when the content-stream
+    // edit can't apply and we have to fall back to drawing on top.
+    const fontFamily = sortedRun[0]?.fontName || 'Helvetica';
     setInlineEdit({
       sx: screen.x,
       sy: screen.y,
@@ -341,7 +375,7 @@ export function AnnotationLayer({
       pw,
       ph,
       fontSize: maxH,
-      fontFamily: 'Helvetica',
+      fontFamily,
       color: '#000000',
       text,
       originalText: text,
@@ -749,7 +783,8 @@ export function AnnotationLayer({
               />
             );
           }
-          case 'text':
+          case 'text': {
+            const ws = detectWeightStyle(a.fontFamily ?? '');
             return (
               <text
                 key={a.id}
@@ -758,6 +793,8 @@ export function AnnotationLayer({
                 fill={a.color}
                 fontSize={(a.fontSize ?? 14) * zoom}
                 fontFamily={a.fontFamily ?? 'Helvetica'}
+                fontWeight={ws.bold ? 'bold' : 'normal'}
+                fontStyle={ws.italic ? 'italic' : 'normal'}
                 onClick={onClick}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -784,6 +821,7 @@ export function AnnotationLayer({
                 {a.text}
               </text>
             );
+          }
           case 'note':
             return (
               <g
@@ -837,6 +875,7 @@ export function AnnotationLayer({
             // (b) fall back to drawing this cover + text. Either way the
             // user sees the same result on screen during editing.
             const bg = a.backgroundColor ?? '#FFFFFF';
+            const wsR = detectWeightStyle(a.fontFamily ?? '');
             return (
               <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
                 <rect
@@ -853,6 +892,8 @@ export function AnnotationLayer({
                   fill={a.color}
                   fontSize={(a.fontSize ?? 14) * zoom}
                   fontFamily={a.fontFamily ?? 'Helvetica'}
+                  fontWeight={wsR.bold ? 'bold' : 'normal'}
+                  fontStyle={wsR.italic ? 'italic' : 'normal'}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setInlineEdit({
@@ -1008,6 +1049,12 @@ export function AnnotationLayer({
               minHeight: 28,
               fontSize: inlineEdit.fontSize * zoom,
               fontFamily: inlineEdit.fontFamily,
+              fontWeight: detectWeightStyle(inlineEdit.fontFamily).bold
+                ? 'bold'
+                : 'normal',
+              fontStyle: detectWeightStyle(inlineEdit.fontFamily).italic
+                ? 'italic'
+                : 'normal',
               color: inlineEdit.color,
               background: 'rgba(255, 255, 255, 0.97)',
               border: '2px solid #FF9900',

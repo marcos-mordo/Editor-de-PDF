@@ -20,6 +20,38 @@ function hexToRgb(hex: string): RGB {
 }
 
 /**
+ * Maps a PDF font name (whatever the source PDF used) to the closest of
+ * pdf-lib's 14 standard fonts. We can't embed arbitrary fonts, but matching
+ * the WEIGHT and STYLE (bold/italic/serif/mono) keeps the visual swap close
+ * to invisible.
+ */
+function pickStandardFont(name: string): StandardFonts {
+  const lower = name.toLowerCase();
+  const isBold = /bold|black|heavy|demi|semibold/.test(lower);
+  const isItalic = /italic|oblique|slant/.test(lower);
+  const isSerif = /times|serif|georgia|garamond|cambria|book|roman/.test(lower);
+  const isMono =
+    /courier|mono|consol|menlo|inconsolata|source\s*code/.test(lower);
+
+  if (isMono) {
+    if (isBold && isItalic) return StandardFonts.CourierBoldOblique;
+    if (isBold) return StandardFonts.CourierBold;
+    if (isItalic) return StandardFonts.CourierOblique;
+    return StandardFonts.Courier;
+  }
+  if (isSerif) {
+    if (isBold && isItalic) return StandardFonts.TimesRomanBoldItalic;
+    if (isBold) return StandardFonts.TimesRomanBold;
+    if (isItalic) return StandardFonts.TimesRomanItalic;
+    return StandardFonts.TimesRoman;
+  }
+  if (isBold && isItalic) return StandardFonts.HelveticaBoldOblique;
+  if (isBold) return StandardFonts.HelveticaBold;
+  if (isItalic) return StandardFonts.HelveticaOblique;
+  return StandardFonts.Helvetica;
+}
+
+/**
  * Builds the final PDF bytes for the current document:
  * - Reorders pages
  * - Drops deleted pages
@@ -53,29 +85,14 @@ export async function savePdfWithEdits(opts?: {
     }
   });
 
-  // Fonts cache
+  // Fonts cache. Map a PDF font name (any vendor name like "Inter-Bold",
+  // "ArialMT", "TimesNewRoman-Italic", "F0", "TT2") to the closest PDF
+  // standard font we can embed via pdf-lib.
   const fontCache = new Map<string, PDFFont>();
   async function getFont(name: string): Promise<PDFFont> {
     const key = name || 'Helvetica';
     if (fontCache.has(key)) return fontCache.get(key)!;
-    let stdFont: StandardFonts = StandardFonts.Helvetica;
-    switch (key.toLowerCase()) {
-      case 'times-roman':
-      case 'times':
-        stdFont = StandardFonts.TimesRoman;
-        break;
-      case 'courier':
-        stdFont = StandardFonts.Courier;
-        break;
-      case 'helvetica-bold':
-        stdFont = StandardFonts.HelveticaBold;
-        break;
-      case 'helvetica-oblique':
-        stdFont = StandardFonts.HelveticaOblique;
-        break;
-      default:
-        stdFont = StandardFonts.Helvetica;
-    }
+    const stdFont = pickStandardFont(key);
     const f = await out.embedFont(stdFont);
     fontCache.set(key, f);
     return f;
