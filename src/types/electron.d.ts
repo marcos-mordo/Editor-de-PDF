@@ -18,6 +18,7 @@ interface FileFilter {
 
 interface ElectronApi {
   openPdf(opts?: { multi?: boolean }): Promise<OpenedFile[] | null>;
+  openPdfByPath(filePath: string): Promise<OpenedFile | null>;
   openImage(): Promise<OpenedImage | null>;
   savePdf(defaultName: string, data: ArrayBuffer): Promise<string | null>;
   saveBinary(

@@ -9,9 +9,13 @@ import {
   Highlighter,
   Pencil,
   Languages,
+  Clock,
+  FileText,
+  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDocument } from '../../stores/document';
+import { useRecent } from '../../stores/recent';
 import { showMergeDialog } from '../../features/pages/MergeDialog';
 import { showOcrDialog } from '../../features/ocr/OcrDialog';
 import { showEncryptDialog } from '../../features/security/EncryptDialog';
@@ -19,6 +23,8 @@ import { Logo } from '../Logo/Logo';
 
 export function Welcome() {
   const loadFromBytes = useDocument((s) => s.loadFromBytes);
+  const recent = useRecent((s) => s.items);
+  const clearRecent = useRecent((s) => s.clear);
   const [dragging, setDragging] = useState(false);
 
   async function handleOpen() {
@@ -34,6 +40,20 @@ export function Welcome() {
     } catch (e: any) {
       console.error(e);
       toast.error('Error al abrir: ' + (e?.message ?? 'desconocido'));
+    }
+  }
+
+  async function openRecent(path: string, name: string) {
+    try {
+      const file = await window.api.openPdfByPath(path);
+      if (!file) {
+        toast.error(`No se pudo abrir ${name} (¿se movió?)`);
+        return;
+      }
+      await loadFromBytes(file.data, file.name, file.path);
+      toast.success(`Abierto: ${file.name}`);
+    } catch (e: any) {
+      toast.error('Error: ' + (e?.message ?? 'desconocido'));
     }
   }
 
@@ -54,11 +74,11 @@ export function Welcome() {
 
   const features = [
     { icon: <Highlighter size={20} />, title: 'Anotaciones', desc: 'Resaltado, subrayado, formas y dibujo libre' },
-    { icon: <Pencil size={20} />, title: 'Edición', desc: 'Añade texto e imágenes sobre tus PDFs' },
+    { icon: <Pencil size={20} />, title: 'Editor de texto', desc: 'Click en cualquier palabra para editarla' },
     { icon: <Files size={20} />, title: 'Combinar PDFs', desc: 'Une varios documentos en uno solo' },
     { icon: <Scissors size={20} />, title: 'Dividir', desc: 'Extrae páginas o trozos de un PDF' },
     { icon: <ScanText size={20} />, title: 'OCR', desc: 'Reconoce texto en escaneos (es/en/fr)' },
-    { icon: <Stamp size={20} />, title: 'Marcas de agua', desc: 'Texto o imagen como watermark' },
+    { icon: <Stamp size={20} />, title: 'Sellos & marcas', desc: 'Aprobado, Confidencial y personalizados' },
     { icon: <ShieldCheck size={20} />, title: 'Contraseñas', desc: 'Protege tus PDFs con cifrado' },
     { icon: <Languages size={20} />, title: 'Exportar', desc: 'A imágenes, Word o Excel' },
   ];
@@ -73,7 +93,6 @@ export function Welcome() {
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      {/* Hero (Amazon-style) */}
       <div className="bg-gradient-to-b from-amazon-nav-light to-amazon-nav px-6 py-12 text-white">
         <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
           <Logo size={84} />
@@ -120,7 +139,6 @@ export function Welcome() {
         </div>
       </div>
 
-      {/* Drop zone (visible state) */}
       {dragging && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-amazon-yellow/30 backdrop-blur-sm">
           <div className="rounded-lg border-4 border-dashed border-amazon-orange bg-page px-12 py-8 text-center shadow-2xl">
@@ -132,8 +150,43 @@ export function Welcome() {
         </div>
       )}
 
-      {/* Features grid */}
       <div className="mx-auto max-w-5xl px-6 py-10">
+        {recent.length > 0 && (
+          <div className="mb-8 rounded-lg border border-page-border bg-page p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+                <Clock size={16} className="text-amazon-orange" />
+                Archivos recientes
+              </h2>
+              <button
+                onClick={clearRecent}
+                className="text-xs text-ink-secondary hover:text-amazon-link-hover"
+              >
+                Limpiar lista
+              </button>
+            </div>
+            <div className="grid gap-1">
+              {recent.slice(0, 8).map((r) => (
+                <button
+                  key={r.path}
+                  className="flex w-full items-center gap-3 rounded p-2 text-left hover:bg-page-alt"
+                  onClick={() => openRecent(r.path, r.name)}
+                  title={r.path}
+                >
+                  <FileText size={16} className="flex-shrink-0 text-amazon-orange" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-ink">{r.name}</div>
+                    <div className="truncate text-xs text-ink-secondary">{r.path}</div>
+                  </div>
+                  <span className="text-xs text-ink-muted">
+                    {new Date(r.openedAt).toLocaleDateString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <h2 className="mb-1 text-xl font-bold text-ink">Todo lo que puedes hacer</h2>
         <p className="mb-6 text-sm text-ink-secondary">
           Las herramientas profesionales de los editores premium, sin suscripción.

@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from '../../lib/pdfjs';
 import { useAnnotations, type Annotation } from '../../stores/annotations';
 import { useTools } from '../../stores/tools';
-import { AnnotationLayer } from './AnnotationLayer';
+import { AnnotationLayer, type TextItemData } from './AnnotationLayer';
 
-// Module-level stable empty array. Returning a fresh [] from a selector
-// breaks React's useSyncExternalStore contract and causes a re-render
-// loop (React error #185 — Maximum update depth exceeded).
 const EMPTY_ANNOTATIONS: Annotation[] = [];
+const EMPTY_TEXT_ITEMS: TextItemData[] = [];
 
 interface Props {
   pdf: PDFDocumentProxy;
@@ -30,11 +28,73 @@ export function PageView({
   const textLayerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [textItems, setTextItems] = useState<TextItemData[]>(EMPTY_TEXT_ITEMS);
+  const [pdfPageHeight, setPdfPageHeight] = useState(0);
+  const [pdfPageWidth, setPdfPageWidth] = useState(0);
 
   const annotations = useAnnotations(
     (s) => s.byPage[pageNumber] ?? EMPTY_ANNOTATIONS,
   );
   const activeTool = useTools((s) => s.active);
+
+  /**
+   * Samples the rendered canvas around a given PDF-space rect to find the
+   * dominant background color. Used by the text editor so the "cover"
+   * rectangle blends with whatever is behind the text (white, coloured
+   * block, watermark, image) instead of always being plain white.
+   */
+  const sampleBackgroundColor = useCallback(
+    (pdfX: number, pdfY: number, pdfW: number, pdfH: number): string => {
+      const canvas = canvasRef.current;
+      if (!canvas || pdfPageHeight <= 0) return '#FFFFFF';
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return '#FFFFFF';
+      const dpr = window.devicePixelRatio || 1;
+      const scale = zoom * dpr;
+      const cx = Math.round(pdfX * scale);
+      const cyTop = Math.round((pdfPageHeight - pdfY - pdfH) * scale);
+      const cw = Math.max(1, Math.round(pdfW * scale));
+      const ch = Math.max(1, Math.round(pdfH * scale));
+      const samples: number[][] = [];
+      function maybeSample(x: number, y: number) {
+        if (x < 0 || y < 0 || x >= canvas!.width || y >= canvas!.height) return;
+        try {
+          const d = ctx!.getImageData(x, y, 1, 1).data;
+          samples.push([d[0], d[1], d[2]]);
+        } catch {
+          /* tainted canvas? */
+        }
+      }
+      const margin = Math.max(2, Math.round(ch * 0.2));
+      // Eight points just outside the rect: 4 sides centred + 4 corners
+      maybeSample(cx + cw / 2, cyTop - margin);
+      maybeSample(cx + cw / 2, cyTop + ch + margin);
+      maybeSample(cx - margin, cyTop + ch / 2);
+      maybeSample(cx + cw + margin, cyTop + ch / 2);
+      maybeSample(cx - margin, cyTop - margin);
+      maybeSample(cx + cw + margin, cyTop - margin);
+      maybeSample(cx - margin, cyTop + ch + margin);
+      maybeSample(cx + cw + margin, cyTop + ch + margin);
+      if (samples.length === 0) return '#FFFFFF';
+      // Average the samples — close enough for solid colours and a graceful
+      // degradation for textured/watermarked backgrounds.
+      let r = 0,
+        g = 0,
+        b = 0;
+      for (const s of samples) {
+        r += s[0];
+        g += s[1];
+        b += s[2];
+      }
+      const n = samples.length;
+      r = Math.round(r / n);
+      g = Math.round(g / n);
+      b = Math.round(b / n);
+      const hex = (v: number) => v.toString(16).padStart(2, '0');
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    },
+    [zoom, pdfPageHeight],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -45,12 +105,6 @@ export function PageView({
       const canvas = canvasRef.current;
       if (!canvas || cancelled) return;
 
-      // Canonical HiDPI pattern for PDF.js:
-      // - render the viewport at scale * devicePixelRatio
-      // - set canvas internal size to those pixels
-      // - set CSS display size to scale (browser scales down)
-      // PDF.js draws at the correct internal resolution; the GPU scales
-      // back, producing crisp output even on 200-300% displays.
       const dpr = window.devicePixelRatio || 1;
       const renderScale = zoom * dpr;
       const viewport = page.getViewport({ scale: renderScale, rotation });
@@ -71,7 +125,7 @@ export function PageView({
         if (cancelled) return;
         setSize({ w: cssWidth, h: cssHeight });
 
-        // Render text layer for selection / search (positions in CSS pixels)
+        // Render text layer + capture text items for the inline text editor.
         const textLayer = textLayerRef.current;
         if (textLayer) {
           textLayer.innerHTML = '';
@@ -80,15 +134,17 @@ export function PageView({
           try {
             const textContent = await page.getTextContent();
             const view = page.view;
-            const pdfPageHeight = view[3] - view[1];
+            const pdfH = view[3] - view[1];
+            const pdfW = view[2] - view[0];
+            const items: TextItemData[] = [];
             for (const item of textContent.items as any[]) {
-              if (!item.str) continue;
+              if (!item.str || !item.transform) continue;
               const span = document.createElement('span');
               span.textContent = item.str;
               span.style.position = 'absolute';
               const tx = item.transform;
               const cssX = tx[4] * zoom;
-              const cssY = (pdfPageHeight - tx[5]) * zoom - item.height * zoom;
+              const cssY = (pdfH - tx[5]) * zoom - item.height * zoom;
               span.style.left = `${cssX}px`;
               span.style.top = `${cssY}px`;
               span.style.fontSize = `${item.height * zoom}px`;
@@ -96,9 +152,22 @@ export function PageView({
               span.style.whiteSpace = 'pre';
               span.style.userSelect = 'text';
               textLayer.appendChild(span);
+              items.push({
+                str: item.str,
+                x: tx[4],
+                y: tx[5],
+                width: item.width ?? 0,
+                height: item.height ?? 0,
+                fontName: item.fontName ?? '',
+              });
+            }
+            if (!cancelled) {
+              setTextItems(items.length > 0 ? items : EMPTY_TEXT_ITEMS);
+              setPdfPageHeight(pdfH);
+              setPdfPageWidth(pdfW);
             }
           } catch {
-            /* text content not available */
+            if (!cancelled) setTextItems(EMPTY_TEXT_ITEMS);
           }
         }
       } catch (err: any) {
@@ -118,7 +187,6 @@ export function PageView({
     };
   }, [pdf, pageNumber, zoom, rotation]);
 
-  // Visibility tracking
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -151,8 +219,11 @@ export function PageView({
         <canvas ref={canvasRef} className="pdf-page-canvas" />
         <div
           ref={textLayerRef}
-          className="absolute top-0 left-0 leading-none opacity-100 pointer-events-auto"
-          style={{ mixBlendMode: 'multiply' }}
+          className="absolute top-0 left-0 leading-none opacity-100"
+          style={{
+            mixBlendMode: 'multiply',
+            pointerEvents: activeTool === 'edit-text' ? 'none' : 'auto',
+          }}
         />
         {size && (
           <AnnotationLayer
@@ -163,6 +234,10 @@ export function PageView({
             rotation={rotation}
             annotations={annotations}
             toolActive={activeTool !== 'select' && activeTool !== 'hand'}
+            textItems={textItems}
+            pdfPageHeight={pdfPageHeight}
+            pdfPageWidth={pdfPageWidth}
+            sampleBackgroundColor={sampleBackgroundColor}
           />
         )}
       </div>

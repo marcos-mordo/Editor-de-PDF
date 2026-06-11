@@ -1,127 +1,167 @@
 ==============================================
-  EDITOR DE PDF v0.1
+  EDITOR DE PDF v0.4.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-ESTA VERSION ARREGLA EL PROBLEMA DE PANTALLA BLANCA AL ABRIR PDFs.
-
-Causas reales encontradas y corregidas:
-
- 1. Bucle infinito de React al cargar un PDF
-    (selector de Zustand creando array nuevo cada render).
-
- 2. PDF.js worker no se cargaba desde rutas file://
-    porque Chromium bloquea modulos ES desde el disco
-    (problema conocido de Electron + PDF.js v4).
-    El worker ahora se inyecta inline via Blob URL.
-
-Verificado con tests automatizados sobre el .exe empaquetado:
-   - 8/8 smoke tests (bridge, IPC, react, DOM)
-   - 3/3 pixel tests (PDF.js dibuja contenido real)
-   - PDF de prueba con texto y rectangulo naranja renderiza
-     correctamente en pantalla.
-
-
-En esta carpeta tienes dos formas de usar Editor de PDF en tu PC.
-Escoge UNA de las dos:
-
-
------------------------------------------------
- OPCION 1: Instalador (recomendada)
------------------------------------------------
-Archivo:  "Editor de PDF - Instalador.exe"
-
-- Doble click para instalarlo.
-- Crea acceso directo en el menu Inicio y en el escritorio.
-- Para desinstalar: Panel de control -> Programas -> Editor de PDF.
-
-
------------------------------------------------
- OPCION 2: Portable (sin instalacion)
------------------------------------------------
-Archivo:  "Editor de PDF - Portable.exe"
-
-- Solo doble click y se ejecuta.
-- No necesita instalacion ni permisos de administrador.
-- Puedes copiarlo a un USB y llevarlo a cualquier PC.
-
-
-NOTA: Windows mostrara un aviso de "SmartScreen" porque el archivo
-no esta firmado digitalmente (lo cual cuesta ~$300 USD al ano).
-Es seguro: pulsa "Mas informacion" -> "Ejecutar de todas formas".
+(Confirmar version: Menu Ayuda -> Acerca de
+debe mostrar v0.4.0)
 
 
 ==============================================
- QUE PUEDES HACER CON ESTA APP
+ NOVEDAD GRANDE: EDITOR DE TEXTO REAL
 ==============================================
 
- - Abrir PDFs, hacer zoom, rotar paginas, navegar
- - Resaltar, subrayar, tachar texto
- - Anadir notas, dibujos, rectangulos, flechas, formas
- - Insertar texto encima del PDF
- - Insertar imagenes (PNG/JPG)
- - Crear firma manuscrita con el raton y colocarla
- - Combinar varios PDFs en uno
- - Dividir un PDF en partes
- - Reordenar, rotar y eliminar paginas
- - OCR: reconocer texto en escaneos (espanol, ingles, frances...)
- - Anadir marcas de agua (texto, diagonal, centrada)
- - Proteger PDFs con contrasena
- - Exportar a imagenes PNG, Word (.docx), Excel (.xlsx)
+Eliminada la herramienta "Reemplazar texto" (era
+confusa). En su lugar hay un EDITOR DE TEXTO REAL:
 
-Todo se procesa LOCALMENTE en tu PC. Ningun archivo se envia a internet.
+ - Activa la herramienta "Editor de texto"
+   (icono de cursor de texto, en la barra de tools).
 
+ - HAZ CLICK SOBRE CUALQUIER PALABRA del PDF.
+   El editor detecta automaticamente el texto que
+   has clicado y muestra un campo de edicion
+   AMARILLO posicionado encima, con LA MISMA FUENTE
+   Y TAMANO del original, pre-rellenado con el
+   texto actual.
 
-==============================================
- SI ALGO FALLA
-==============================================
+ - Puedes:
+     - Corregir una palabra (errata)
+     - Borrar texto (Backspace o Suprimir)
+     - Ampliar texto (escribir mas caracteres)
+     - Cambiar partes (seleccionar, escribir)
+     - Pulsar Esc para cancelar
+     - Pulsar Enter o clicar fuera para confirmar
 
-La app guarda un log con todo lo que hace en:
+ - El editor cubre el texto original con blanco y
+   coloca el nuevo encima al guardar.
 
-    C:\Users\<TU_USUARIO>\.editor-de-pdf\
-
-Dentro encontraras:
-    main.log     - estado del proceso principal de Electron
-    preload.log  - estado del bridge window.api
-
-Tambien puedes abrir esta carpeta desde dentro de la app:
-    Menu Ayuda -> Abrir carpeta de logs
-
-Si la app no funciona, comparte estos logs.
+Doble click sobre cualquier texto que TU has anadido
+tambien abre el editor inline directamente sobre el.
 
 
 ==============================================
- REQUISITOS
+ NAVEGACION CON LA RUEDA DEL RATON
 ==============================================
 
- - Windows 10 o superior, 64 bits
- - 4 GB de RAM (recomendado 8 GB)
- - 500 MB libres en disco para la app
- - Si vas a usar OCR, la primera vez descargara el idioma (~20 MB)
+ - CLICK CON LA RUEDA DEL RATON = modo mano temporal.
+   Mantienes la rueda pulsada y mueves el raton para
+   desplazarte por el documento, AUNQUE TENGAS OTRA
+   HERRAMIENTA SELECCIONADA. Como en Photoshop o Figma.
+
+ - CTRL + RUEDA = zoom in/out.
+
+ - RUEDA SOLA = scroll vertical normal.
+
+
+==============================================
+ OTRAS FUNCIONES DE ADOBE ACROBAT AÑADIDAS
+==============================================
+
+ BUSCAR Y REEMPLAZAR (Ctrl+F)
+   Panel flotante en la esquina superior derecha.
+   - Buscar texto en todo el documento
+   - Distinguir mayusculas (opcional)
+   - Navegar entre resultados (Enter, Shift+Enter)
+   - Reemplazar uno a uno o todos a la vez
+
+ IMPRIMIR (Ctrl+P)
+   Imprime el PDF con las anotaciones aplicadas.
+
+ INSERTAR PAGINA EN BLANCO
+   Menu Archivo -> "Insertar pagina en blanco..."
+   - Posicion: antes/despues de actual, al principio, al final
+   - Tamanos: igual que actual, A4, Carta, Legal, A5
+   - Orientacion: vertical / horizontal
+
+ ARCHIVOS RECIENTES
+   En la pantalla de inicio aparece la lista de los
+   ultimos 8 PDFs abiertos. Un click los reabre.
+   Boton para limpiar la lista.
+
+
+==============================================
+ LO QUE YA TENIA Y SIGUE FUNCIONANDO
+==============================================
+
+ - DESHACER/REHACER (Ctrl+Z, Ctrl+Y, botones amarillos
+   en la barra superior, menu Edicion).
+ - ANOTACIONES: resaltado, subrayado, tachado,
+   rectangulos, elipses, flechas, dibujo libre, notas,
+   texto, imagenes, firma manuscrita.
+ - GESTION DE PAGINAS: reordenar (arrastrar miniaturas),
+   rotar, eliminar, combinar varios PDFs, dividir.
+ - OCR: reconocer texto en escaneos (es/en/fr/pt/de).
+ - SEGURIDAD: marca de agua, quitar marca de agua,
+   contrasenas.
+ - HERRAMIENTAS: sellos predefinidos (Aprobado,
+   Confidencial, etc.), encabezados/pies/numeros de
+   pagina, borrador (cubrir con blanco).
+ - CONVERSION: PNG (ZIP), Word (.docx), Excel (.xlsx).
+ - Icono naranja correcto en .exe y ventana.
+ - Renderizado nitido en pantallas HiDPI.
+
+
+==============================================
+ ATAJOS DE TECLADO
+==============================================
+
+ Ctrl+O          Abrir PDF
+ Ctrl+S          Guardar
+ Ctrl+Shift+S    Guardar como
+ Ctrl+P          Imprimir
+ Ctrl+Z          Deshacer
+ Ctrl+Y          Rehacer
+ Ctrl+Shift+Z    Rehacer (alternativa)
+ Ctrl+F          Buscar / Reemplazar
+ Ctrl++/Ctrl+=   Acercar (zoom)
+ Ctrl+-          Alejar (zoom)
+ Ctrl+0          Restablecer zoom (100%)
+ Ctrl + rueda    Zoom in/out
+ Click rueda     Mano temporal (panning)
+ Esc             Cerrar panel de busqueda / cancelar
+ Enter           Confirmar editor / siguiente busqueda
+ Shift+Enter     Anterior busqueda
+
+
+==============================================
+ INSTALACION
+==============================================
+
+OPCION 1: "Editor de PDF - Instalador.exe"
+ - Doble click para instalarlo.
+ - Acceso directo en menu Inicio y escritorio.
+ - Desinstalar: Panel de control -> Programas.
+
+OPCION 2: "Editor de PDF - Portable.exe"
+ - Doble click y se ejecuta sin instalar.
+ - Llevatelo en USB.
+
+Windows mostrara "SmartScreen". Pulsa "Mas informacion"
+-> "Ejecutar de todas formas".
+
+Esta version arregla tambien el error "Installer
+integrity check has failed" de la version anterior.
 
 
 ==============================================
  PRIVACIDAD
 ==============================================
 
- - NO se envia nada a internet (salvo el modelo de OCR la primera vez)
- - NO requiere cuenta, login ni activacion
- - NO tiene suscripcion ni publicidad
- - Tus PDFs nunca salen de tu computadora
+ - NO se envia nada a internet (salvo idioma OCR la
+   primera vez que lo uses).
+ - NO requiere cuenta ni activacion.
+ - Tus PDFs nunca salen de tu computadora.
 
 
 ==============================================
- PROBLEMAS COMUNES
+ SI ALGO FALLA
 ==============================================
 
- - Si Windows bloquea el archivo:
-   Click derecho -> Propiedades -> marcar "Desbloquear" -> Aceptar
+La app guarda log en:
+    C:\Users\<TU_USUARIO>\.editor-de-pdf\
 
- - Si SmartScreen lo marca como desconocido:
-   Es normal en apps sin firma digital. Pulsa "Mas informacion"
-   y luego "Ejecutar de todas formas".
+Tambien accesible desde:
+    Menu Ayuda -> Abrir carpeta de logs
 
- - Si la app no abre, comprueba que tu Windows este actualizado
-   y reinicia el equipo.
 
 Disfruta!

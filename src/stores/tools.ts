@@ -15,7 +15,7 @@ export type ToolId =
   | 'note'
   | 'signature'
   | 'eraser'
-  | 'replace-text';
+  | 'edit-text';
 
 interface ToolsState {
   active: ToolId;

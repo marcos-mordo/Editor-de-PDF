@@ -69,6 +69,16 @@ export const useDocument = create<DocumentState>((set, get) => ({
       useAnnotations.setState({ byPage: {}, selectedId: null });
       useHistory.setState({ past: [], future: [] });
 
+      // Save to recent files list
+      if (filePath) {
+        try {
+          const { useRecent } = await import('./recent');
+          useRecent.getState().add(filePath, name);
+        } catch {
+          /* noop */
+        }
+      }
+
       set({
         doc: {
           id: generateId(),

@@ -70,8 +70,34 @@ function resolvePreloadPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 
+/** Resolve the window icon — in dev, build/icon.ico; in production, extraResources. */
+function resolveWindowIcon(): string {
+  const candidates = app.isPackaged
+    ? [
+        path.join(process.resourcesPath, 'icon.ico'),
+        path.join(process.resourcesPath, 'icon.png'),
+      ]
+    : [
+        path.join(process.env.APP_ROOT!, 'build', 'icon.ico'),
+        path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+      ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        log('window icon found at: ' + p);
+        return p;
+      }
+    } catch (e) {
+      log('error checking icon ' + p + ': ' + (e as Error).message);
+    }
+  }
+  log('WARN: no window icon found in any candidate path');
+  return candidates[0];
+}
+
 function createWindow(): void {
   const preloadPath = resolvePreloadPath();
+  const iconPath = resolveWindowIcon();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -80,6 +106,7 @@ function createWindow(): void {
     title: 'Editor de PDF',
     backgroundColor: '#F3F3F3',
     show: false,
+    icon: iconPath,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -172,12 +199,22 @@ function buildMenu(): void {
         },
         { type: 'separator' },
         {
+          label: 'Imprimir...',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => mainWindow?.webContents.send('menu:print'),
+        },
+        { type: 'separator' },
+        {
           label: 'Combinar PDFs...',
           click: () => mainWindow?.webContents.send('menu:merge'),
         },
         {
           label: 'Dividir PDF...',
           click: () => mainWindow?.webContents.send('menu:split'),
+        },
+        {
+          label: 'Insertar página en blanco...',
+          click: () => mainWindow?.webContents.send('menu:insert-blank'),
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
@@ -186,8 +223,27 @@ function buildMenu(): void {
     {
       label: 'Edición',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        {
+          label: 'Deshacer',
+          accelerator: 'CmdOrCtrl+Z',
+          click: () => mainWindow?.webContents.send('menu:undo'),
+        },
+        {
+          label: 'Rehacer',
+          accelerator: 'CmdOrCtrl+Y',
+          click: () => mainWindow?.webContents.send('menu:redo'),
+        },
+        {
+          label: 'Rehacer (alternativa)',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          click: () => mainWindow?.webContents.send('menu:redo'),
+        },
+        { type: 'separator' },
+        {
+          label: 'Buscar / Reemplazar...',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => mainWindow?.webContents.send('menu:find'),
+        },
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },
@@ -225,9 +281,23 @@ function buildMenu(): void {
           label: 'OCR (reconocer texto)',
           click: () => mainWindow?.webContents.send('menu:ocr'),
         },
+        { type: 'separator' },
+        {
+          label: 'Sellos (Aprobado, Confidencial...)',
+          click: () => mainWindow?.webContents.send('menu:stamps'),
+        },
+        {
+          label: 'Encabezado / Pie / Números de página',
+          click: () => mainWindow?.webContents.send('menu:header-footer'),
+        },
+        { type: 'separator' },
         {
           label: 'Marca de agua...',
           click: () => mainWindow?.webContents.send('menu:watermark'),
+        },
+        {
+          label: 'Quitar marca de agua...',
+          click: () => mainWindow?.webContents.send('menu:remove-watermark'),
         },
         {
           label: 'Proteger con contraseña...',
@@ -389,6 +459,24 @@ safeHandle(
     return true;
   },
 );
+
+safeHandle('fs:read-pdf', async (_e, { filePath }: { filePath: string }) => {
+  try {
+    const data = await fsp.readFile(filePath);
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      size: data.byteLength,
+      data: data.buffer.slice(
+        data.byteOffset,
+        data.byteOffset + data.byteLength,
+      ),
+    };
+  } catch (err: any) {
+    log(`fs:read-pdf failed: ${err.message}`);
+    return null;
+  }
+});
 
 safeHandle('app:get-version', async () => app.getVersion());
 safeHandle('app:get-platform', async () => process.platform);

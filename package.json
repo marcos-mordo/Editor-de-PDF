@@ -1,7 +1,7 @@
 {
   "name": "editor-pdf",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.4.1",
   "description": "Editor de PDF profesional multiplataforma - alternativa libre a Adobe Acrobat",
   "author": "Marco",
   "main": "dist-electron/main.js",
@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:win": "npm run build && electron-builder --win --dir && node scripts/embed-icon.mjs && electron-builder --win nsis portable --prepackaged release/win-unpacked",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:all": "npm run build && electron-builder -mwl"
@@ -50,6 +50,7 @@
     "electron-builder": "^25.1.8",
     "png-to-ico": "^3.0.1",
     "postcss": "^8.4.49",
+    "resedit": "^3.0.2",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
@@ -66,6 +67,16 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",

@@ -6,6 +6,19 @@ import {
   type Point,
 } from '../../stores/annotations';
 import { pushHistory } from '../../stores/history';
+import { showPrompt } from '../../components/Modal/prompt';
+
+export interface TextItemData {
+  str: string;
+  /** PDF coords (origin bottom-left). x = baseline left, y = baseline bottom. */
+  x: number;
+  y: number;
+  /** Width of the text item in PDF coords. */
+  width: number;
+  /** Height (font size approx) in PDF coords. */
+  height: number;
+  fontName: string;
+}
 
 interface Props {
   pageNumber: number;
@@ -15,12 +28,18 @@ interface Props {
   rotation: number;
   annotations: Annotation[];
   toolActive: boolean;
+  textItems: TextItemData[];
+  pdfPageHeight: number;
+  pdfPageWidth: number;
+  /** Sample the canvas around a PDF-space rect to find the background colour. */
+  sampleBackgroundColor?: (
+    pdfX: number,
+    pdfY: number,
+    pdfW: number,
+    pdfH: number,
+  ) => string;
 }
 
-/**
- * Converts a screen point on the rendered page to PDF user space
- * (origin bottom-left, unrotated coordinates).
- */
 function screenToPdf(
   screenX: number,
   screenY: number,
@@ -29,11 +48,8 @@ function screenToPdf(
   zoom: number,
   rotation: number,
 ): Point {
-  // First normalize to "rendered" space (zoom=1)
   const rx = screenX / zoom;
   const ry = screenY / zoom;
-  // Inverse rotation. The rendered viewport has rotation applied; we need
-  // unrotated coordinates inside the page's natural orientation.
   const ph = rotation % 180 === 0 ? pageHeight / zoom : pageWidth / zoom;
   const pw = rotation % 180 === 0 ? pageWidth / zoom : pageHeight / zoom;
   let ux = rx;
@@ -46,7 +62,6 @@ function screenToPdf(
     case 90:
       ux = ry;
       uy = rx;
-      // swap
       break;
     case 180:
       ux = pw - rx;
@@ -60,6 +75,81 @@ function screenToPdf(
   return { x: ux, y: uy };
 }
 
+interface InlineEdit {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  px: number;
+  py: number;
+  pw: number;
+  ph: number;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  text: string;
+  /** "add" = new text. "edit-existing" = replace original PDF text. "edit-annotation" = modify an existing annotation. */
+  mode: 'add' | 'edit-existing' | 'edit-annotation';
+  annotationId?: string;
+}
+
+/**
+ * Group a clicked text item with adjacent items on the same line that have
+ * no large horizontal gap between them. This makes "click on a word"
+ * actually select the whole word (and continuous neighbours), not just
+ * a single character span — PDF text content is often very granular.
+ */
+function findTextRunAt(
+  pdfX: number,
+  pdfY: number,
+  items: TextItemData[],
+): TextItemData[] {
+  const clicked = items.find(
+    (it) =>
+      pdfX >= it.x &&
+      pdfX <= it.x + it.width &&
+      pdfY >= it.y &&
+      pdfY <= it.y + it.height,
+  );
+  if (!clicked) return [];
+
+  // Same-line items: same baseline y (within tolerance) and same font height.
+  const yTol = Math.max(1, clicked.height * 0.2);
+  const hTol = Math.max(1, clicked.height * 0.3);
+  const sameLine = items
+    .filter(
+      (it) =>
+        Math.abs(it.y - clicked.y) <= yTol &&
+        Math.abs(it.height - clicked.height) <= hTol,
+    )
+    .sort((a, b) => a.x - b.x);
+
+  const idx = sameLine.indexOf(clicked);
+  if (idx < 0) return [clicked];
+
+  // Allowed gap between items to still consider them part of the same "run".
+  // ~1.5x font height covers typical word-spacing.
+  const maxGap = clicked.height * 1.5;
+
+  let start = idx;
+  let end = idx;
+  while (start > 0) {
+    const prev = sameLine[start - 1];
+    const curr = sameLine[start];
+    const gap = curr.x - (prev.x + prev.width);
+    if (gap > maxGap) break;
+    start--;
+  }
+  while (end < sameLine.length - 1) {
+    const curr = sameLine[end];
+    const next = sameLine[end + 1];
+    const gap = next.x - (curr.x + curr.width);
+    if (gap > maxGap) break;
+    end++;
+  }
+  return sameLine.slice(start, end + 1);
+}
+
 export function AnnotationLayer({
   pageNumber,
   width,
@@ -68,9 +158,11 @@ export function AnnotationLayer({
   rotation,
   annotations,
   toolActive,
+  textItems,
+  pdfPageHeight,
+  pdfPageWidth,
+  sampleBackgroundColor,
 }: Props) {
-  // Specific selectors — avoid `useTools()` without selector, which
-  // re-renders this layer on every unrelated tool state change.
   const toolActive2 = useTools((s) => s.active);
   const toolColor = useTools((s) => s.color);
   const toolStrokeWidth = useTools((s) => s.strokeWidth);
@@ -91,48 +183,225 @@ export function AnnotationLayer({
   const updateAnnotation = useAnnotations((s) => s.update);
   const selectedId = useAnnotations((s) => s.selectedId);
 
-  function editTextAnnotation(a: Annotation) {
-    const next = prompt('Editar texto:', a.text ?? '');
-    if (next === null) return;
-    pushHistory();
-    updateAnnotation(a.id, { text: next });
-  }
-
   const svgRef = useRef<SVGSVGElement>(null);
   const [draft, setDraft] = useState<null | {
     start: Point;
     end: Point;
     points?: Point[];
   }>(null);
+  const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
+  const inlineRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (inlineEdit && inlineRef.current) {
+      inlineRef.current.focus();
+      if (inlineEdit.mode === 'add') {
+        inlineRef.current.select();
+      } else {
+        // Place cursor at the end so user can keep typing immediately
+        const len = inlineRef.current.value.length;
+        inlineRef.current.setSelectionRange(len, len);
+      }
+    }
+  }, [inlineEdit]);
+
+  function commitInlineEdit() {
+    if (!inlineEdit) return;
+    const text = inlineEdit.text;
+    if (text.length === 0 && inlineEdit.mode !== 'edit-annotation') {
+      setInlineEdit(null);
+      return;
+    }
+    pushHistory();
+    if (inlineEdit.mode === 'edit-annotation' && inlineEdit.annotationId) {
+      if (text.trim() === '') {
+        removeAnnotation(inlineEdit.annotationId);
+      } else {
+        updateAnnotation(inlineEdit.annotationId, { text });
+      }
+    } else if (inlineEdit.mode === 'edit-existing') {
+      // Cover original with the surrounding background colour (NOT plain
+      // white) so coloured backgrounds, watermarks and images stay visible.
+      const bg = sampleBackgroundColor
+        ? sampleBackgroundColor(
+            inlineEdit.px,
+            inlineEdit.py,
+            inlineEdit.pw,
+            inlineEdit.ph,
+          )
+        : '#FFFFFF';
+      addAnnotation({
+        type: 'rect',
+        pageNumber,
+        x: inlineEdit.px - 1,
+        y: inlineEdit.py - 1,
+        width: inlineEdit.pw + 2,
+        height: inlineEdit.ph + 2,
+        color: bg,
+        opacity: 1,
+        strokeWidth: 0,
+      });
+      if (text.trim() !== '') {
+        addAnnotation({
+          type: 'text',
+          pageNumber,
+          x: inlineEdit.px,
+          y: inlineEdit.py,
+          width: Math.max(inlineEdit.pw, text.length * inlineEdit.fontSize * 0.55),
+          height: inlineEdit.fontSize + 4,
+          color: inlineEdit.color,
+          opacity: 1,
+          text,
+          fontSize: inlineEdit.fontSize,
+          fontFamily: inlineEdit.fontFamily,
+        });
+      }
+    } else {
+      // "add" mode
+      addAnnotation({
+        type: 'text',
+        pageNumber,
+        x: inlineEdit.px,
+        y: inlineEdit.py,
+        width: Math.max(inlineEdit.pw, 50),
+        height: inlineEdit.fontSize + 4,
+        color: inlineEdit.color,
+        opacity: 1,
+        text,
+        fontSize: inlineEdit.fontSize,
+        fontFamily: inlineEdit.fontFamily,
+      });
+    }
+    setInlineEdit(null);
+  }
+
+  function cancelInlineEdit() {
+    setInlineEdit(null);
+  }
+
+  async function openEditModal(a: Annotation) {
+    const next = await showPrompt({
+      title: a.type === 'note' ? 'Editar nota' : 'Editar texto',
+      defaultValue: a.text ?? '',
+      multiline: a.type === 'note',
+    });
+    if (next === null) return;
+    pushHistory();
+    updateAnnotation(a.id, { text: next });
+  }
+
+  /** PDF-space rect → screen-space rect. */
+  function pdfRectToScreen(x: number, y: number, w: number, h: number) {
+    const ph = rotation % 180 === 0 ? height / zoom : width / zoom;
+    const pw = rotation % 180 === 0 ? width / zoom : height / zoom;
+    let sx = x;
+    let sy = y;
+    let sw = w;
+    let sh = h;
+    switch (rotation) {
+      case 0:
+        sx = x;
+        sy = ph - y - h;
+        sw = w;
+        sh = h;
+        break;
+      case 90:
+        sx = y;
+        sy = x;
+        sw = h;
+        sh = w;
+        break;
+      case 180:
+        sx = pw - x - w;
+        sy = y;
+        sw = w;
+        sh = h;
+        break;
+      case 270:
+        sx = pw - y - h;
+        sy = ph - x - w;
+        sw = h;
+        sh = w;
+        break;
+    }
+    return { x: sx * zoom, y: sy * zoom, w: sw * zoom, h: sh * zoom };
+  }
+
+  function startEditExistingTextAt(sx: number, sy: number) {
+    const p = screenToPdf(sx, sy, width, height, zoom, rotation);
+    const run = findTextRunAt(p.x, p.y, textItems);
+    if (run.length === 0) return false;
+    // Compute combined bounds of the run
+    const minX = Math.min(...run.map((r) => r.x));
+    const maxX = Math.max(...run.map((r) => r.x + r.width));
+    const minY = Math.min(...run.map((r) => r.y));
+    const maxH = Math.max(...run.map((r) => r.height));
+    const pw = maxX - minX;
+    const ph = maxH;
+    const px = minX;
+    const py = minY;
+    const screen = pdfRectToScreen(px, py, pw, ph);
+    const text = run.map((r) => r.str).join('');
+    setInlineEdit({
+      sx: screen.x,
+      sy: screen.y,
+      sw: Math.max(screen.w + 40, 120),
+      sh: Math.max(screen.h, 24),
+      px,
+      py,
+      pw,
+      ph,
+      fontSize: maxH,
+      fontFamily: 'Helvetica',
+      color: '#000000',
+      text,
+      mode: 'edit-existing',
+    });
+    return true;
+  }
 
   const startInteraction = useCallback(
     (e: React.PointerEvent) => {
       if (!toolActive) return;
-      if (tool.active === 'note' || tool.active === 'text') {
-        const rect = svgRef.current!.getBoundingClientRect();
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
+      if (inlineEdit) return;
+      if (e.button !== 0) return; // only left button
+
+      const svgRect = svgRef.current!.getBoundingClientRect();
+      const sx = e.clientX - svgRect.left;
+      const sy = e.clientY - svgRect.top;
+
+      if (tool.active === 'edit-text') {
+        // Click on a word/run of existing PDF text → inline edit.
+        if (!startEditExistingTextAt(sx, sy)) {
+          // No text under cursor — show an "add text here" inline editor
+          const p = screenToPdf(sx, sy, width, height, zoom, rotation);
+          const fontSize = 14;
+          setInlineEdit({
+            sx,
+            sy: sy - fontSize * zoom * 0.3,
+            sw: 220,
+            sh: fontSize * zoom * 1.4,
+            px: p.x,
+            py: p.y,
+            pw: 220 / zoom,
+            ph: fontSize * 1.4,
+            fontSize,
+            fontFamily: 'Helvetica',
+            color: '#000000',
+            text: '',
+            mode: 'add',
+          });
+        }
+        return;
+      }
+
+      if (tool.active === 'note') {
         const p = screenToPdf(sx, sy, width, height, zoom, rotation);
-        if (tool.active === 'text') {
-          const text = prompt('Texto a insertar:');
-          if (text && text.trim()) {
-            pushHistory();
-            addAnnotation({
-              type: 'text',
-              pageNumber,
-              x: p.x,
-              y: p.y,
-              width: 200,
-              height: tool.fontSize + 4,
-              color: tool.color,
-              opacity: 1,
-              text,
-              fontSize: tool.fontSize,
-              fontFamily: tool.fontFamily,
-            });
-          }
-        } else {
-          const note = prompt('Contenido de la nota:');
+        showPrompt({
+          title: 'Nueva nota',
+          placeholder: 'Contenido de la nota...',
+          multiline: true,
+        }).then((note) => {
           if (note && note.trim()) {
             pushHistory();
             addAnnotation({
@@ -147,16 +416,50 @@ export function AnnotationLayer({
               text: note,
             });
           }
-        }
+        });
         return;
       }
-      const rect = svgRef.current!.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      setDraft({ start: { x: sx, y: sy }, end: { x: sx, y: sy }, points: [{ x: sx, y: sy }] });
+
+      if (tool.active === 'text') {
+        const p = screenToPdf(sx, sy, width, height, zoom, rotation);
+        const fontSize = tool.fontSize;
+        setInlineEdit({
+          sx,
+          sy: sy - fontSize * zoom * 0.3,
+          sw: 220,
+          sh: fontSize * zoom * 1.4,
+          px: p.x,
+          py: p.y,
+          pw: 220 / zoom,
+          ph: fontSize * 1.4,
+          fontSize,
+          fontFamily: tool.fontFamily,
+          color: tool.color,
+          text: '',
+          mode: 'add',
+        });
+        return;
+      }
+
+      setDraft({
+        start: { x: sx, y: sy },
+        end: { x: sx, y: sy },
+        points: [{ x: sx, y: sy }],
+      });
       (e.target as Element).setPointerCapture(e.pointerId);
     },
-    [toolActive, tool, width, height, zoom, rotation, pageNumber, addAnnotation],
+    [
+      toolActive,
+      tool,
+      width,
+      height,
+      zoom,
+      rotation,
+      pageNumber,
+      addAnnotation,
+      inlineEdit,
+      textItems,
+    ],
   );
 
   const moveInteraction = useCallback(
@@ -258,43 +561,19 @@ export function AnnotationLayer({
         opacity: tool.opacity,
         strokeWidth: tool.strokeWidth,
       });
-    } else if (tool.active === 'replace-text') {
-      // "Redact and replace": cover the original area with a white rectangle
-      // and place a new text annotation on top. The user types the replacement
-      // text; we auto-fit font size to the rectangle height.
-      if (w < 4 || h < 4) {
-        setDraft(null);
-        return;
-      }
-      const newText = prompt('Texto que reemplaza esta área:');
-      if (newText && newText.trim()) {
+    } else if (tool.active === 'eraser') {
+      if (w >= 2 && h >= 2) {
         pushHistory();
-        // Filled white rectangle covering the original text (strokeWidth=0 -> filled)
         addAnnotation({
           type: 'rect',
           pageNumber,
-          x: x - 1,
-          y: y - 1,
-          width: w + 2,
-          height: h + 2,
+          x,
+          y,
+          width: w,
+          height: h,
           color: '#FFFFFF',
           opacity: 1,
           strokeWidth: 0,
-        });
-        // New text on top — font size scales with the box height
-        const fontSize = Math.max(8, Math.min(72, h * 0.75));
-        addAnnotation({
-          type: 'text',
-          pageNumber,
-          x: x + 2,
-          y: y + (h - fontSize) / 2,
-          width: w,
-          height: fontSize + 4,
-          color: '#000000',
-          opacity: 1,
-          text: newText,
-          fontSize,
-          fontFamily: 'Helvetica',
         });
       }
     }
@@ -303,7 +582,6 @@ export function AnnotationLayer({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Ignore when typing in inputs
       const target = e.target as HTMLElement;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
@@ -315,46 +593,8 @@ export function AnnotationLayer({
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedId, removeAnnotation]);
 
-  // Convert PDF-space annotation to screen-space for rendering
   function pdfToScreen(a: Annotation): { x: number; y: number; w: number; h: number } {
-    const ph = rotation % 180 === 0 ? height / zoom : width / zoom;
-    const pw = rotation % 180 === 0 ? width / zoom : height / zoom;
-    let sx = a.x;
-    let sy = a.y;
-    let sw = a.width;
-    let sh = a.height;
-    switch (rotation) {
-      case 0:
-        sx = a.x;
-        sy = ph - a.y - a.height;
-        sw = a.width;
-        sh = a.height;
-        break;
-      case 90:
-        sx = a.y;
-        sy = a.x;
-        sw = a.height;
-        sh = a.width;
-        break;
-      case 180:
-        sx = pw - a.x - a.width;
-        sy = a.y;
-        sw = a.width;
-        sh = a.height;
-        break;
-      case 270:
-        sx = pw - a.y - a.height;
-        sy = ph - a.x - a.width;
-        sw = a.height;
-        sh = a.width;
-        break;
-    }
-    return {
-      x: sx * zoom,
-      y: sy * zoom,
-      w: sw * zoom,
-      h: sh * zoom,
-    };
+    return pdfRectToScreen(a.x, a.y, a.width, a.height);
   }
 
   return (
@@ -364,13 +604,22 @@ export function AnnotationLayer({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       className={`annotation-layer ${toolActive ? 'active' : ''}`}
-      style={{ cursor: toolActive ? 'crosshair' : 'default' }}
+      style={{
+        cursor: toolActive
+          ? tool.active === 'eraser'
+            ? 'cell'
+            : tool.active === 'text' ||
+                tool.active === 'note' ||
+                tool.active === 'edit-text'
+              ? 'text'
+              : 'crosshair'
+          : 'default',
+      }}
       onPointerDown={startInteraction}
       onPointerMove={moveInteraction}
       onPointerUp={endInteraction}
       onPointerCancel={endInteraction}
     >
-      {/* Existing annotations */}
       {annotations.map((a) => {
         const s = pdfToScreen(a);
         const selected = a.id === selectedId;
@@ -491,8 +740,7 @@ export function AnnotationLayer({
             if (!a.points || a.points.length < 2) return null;
             const screenPoints = a.points
               .map((p) => {
-                const tmp: Annotation = { ...a, x: p.x, y: p.y, width: 0, height: 0 };
-                const s2 = pdfToScreen(tmp);
+                const s2 = pdfRectToScreen(p.x, p.y, 0, 0);
                 return `${s2.x},${s2.y}`;
               })
               .join(' ');
@@ -523,7 +771,22 @@ export function AnnotationLayer({
                 onClick={onClick}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  editTextAnnotation(a);
+                  setInlineEdit({
+                    sx: s.x,
+                    sy: s.y,
+                    sw: Math.max(120, s.w),
+                    sh: Math.max(28, s.h),
+                    px: a.x,
+                    py: a.y,
+                    pw: a.width,
+                    ph: a.height,
+                    fontSize: a.fontSize ?? 14,
+                    fontFamily: a.fontFamily ?? 'Helvetica',
+                    color: a.color,
+                    text: a.text ?? '',
+                    mode: 'edit-annotation',
+                    annotationId: a.id,
+                  });
                 }}
                 style={{ cursor: 'text', userSelect: 'none' }}
               >
@@ -538,7 +801,7 @@ export function AnnotationLayer({
                 onClick={onClick}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  editTextAnnotation(a);
+                  openEditModal(a);
                 }}
                 style={{ cursor: 'pointer' }}
               >
@@ -583,8 +846,7 @@ export function AnnotationLayer({
         }
       })}
 
-      {/* Draft (in-progress) */}
-      {draft && tool.active !== 'note' && tool.active !== 'text' && (
+      {draft && tool.active !== 'note' && tool.active !== 'text' && tool.active !== 'edit-text' && (
         <>
           {tool.active === 'draw' && draft.points && (
             <polyline
@@ -596,7 +858,7 @@ export function AnnotationLayer({
               opacity={tool.opacity}
             />
           )}
-          {(tool.active === 'highlight') && (
+          {tool.active === 'highlight' && (
             <rect
               x={Math.min(draft.start.x, draft.end.x)}
               y={Math.min(draft.start.y, draft.end.y)}
@@ -606,7 +868,7 @@ export function AnnotationLayer({
               opacity={0.4}
             />
           )}
-          {(tool.active === 'rect') && (
+          {tool.active === 'rect' && (
             <rect
               x={Math.min(draft.start.x, draft.end.x)}
               y={Math.min(draft.start.y, draft.end.y)}
@@ -618,17 +880,17 @@ export function AnnotationLayer({
               opacity={tool.opacity}
             />
           )}
-          {tool.active === 'replace-text' && (
+          {tool.active === 'eraser' && (
             <rect
               x={Math.min(draft.start.x, draft.end.x)}
               y={Math.min(draft.start.y, draft.end.y)}
               width={Math.abs(draft.end.x - draft.start.x)}
               height={Math.abs(draft.end.y - draft.start.y)}
-              fill="#FF9900"
-              fillOpacity={0.2}
+              fill="#FFFFFF"
+              fillOpacity={0.7}
               stroke="#FF9900"
-              strokeWidth={2}
-              strokeDasharray="6 4"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
             />
           )}
           {tool.active === 'circle' && (
@@ -673,6 +935,53 @@ export function AnnotationLayer({
             />
           )}
         </>
+      )}
+
+      {inlineEdit && (
+        <foreignObject
+          x={inlineEdit.sx}
+          y={inlineEdit.sy}
+          width={Math.max(inlineEdit.sw, 120)}
+          height={Math.max(inlineEdit.sh + 8, 32)}
+          style={{ overflow: 'visible' }}
+        >
+          <textarea
+            ref={inlineRef}
+            value={inlineEdit.text}
+            onChange={(e) =>
+              setInlineEdit((s) => (s ? { ...s, text: e.target.value } : null))
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelInlineEdit();
+              } else if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                commitInlineEdit();
+              }
+            }}
+            onBlur={() => commitInlineEdit()}
+            placeholder={inlineEdit.mode === 'add' ? 'Escribe aquí…' : ''}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: 28,
+              fontSize: inlineEdit.fontSize * zoom,
+              fontFamily: inlineEdit.fontFamily,
+              color: inlineEdit.color,
+              background: 'rgba(255, 255, 255, 0.97)',
+              border: '2px solid #FF9900',
+              boxShadow: '0 0 0 4px rgba(255, 153, 0, 0.2)',
+              borderRadius: 4,
+              padding: '2px 4px',
+              outline: 'none',
+              resize: 'none',
+              boxSizing: 'border-box',
+              lineHeight: 1.1,
+              whiteSpace: 'pre',
+            }}
+          />
+        </foreignObject>
       )}
     </svg>
   );

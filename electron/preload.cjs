@@ -27,6 +27,7 @@ tryLog('preload.cjs loaded; setting up window.api bridge');
 const api = {
   // File dialogs
   openPdf: (opts) => ipcRenderer.invoke('dialog:open-pdf', opts || {}),
+  openPdfByPath: (filePath) => ipcRenderer.invoke('fs:read-pdf', { filePath }),
   openImage: () => ipcRenderer.invoke('dialog:open-image'),
   savePdf: (defaultName, data) =>
     ipcRenderer.invoke('dialog:save-pdf', { defaultName, data }),

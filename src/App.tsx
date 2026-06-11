@@ -15,7 +15,13 @@ import { showMergeDialog } from './features/pages/MergeDialog';
 import { showSplitDialog } from './features/pages/SplitDialog';
 import { showOcrDialog } from './features/ocr/OcrDialog';
 import { showWatermarkDialog } from './features/security/WatermarkDialog';
+import { showRemoveWatermarkDialog } from './features/security/RemoveWatermarkDialog';
 import { showEncryptDialog } from './features/security/EncryptDialog';
+import { showStampsDialog } from './features/stamps/StampsDialog';
+import { showHeaderFooterDialog } from './features/layout/HeaderFooterDialog';
+import { showInsertBlankDialog } from './features/pages/InsertBlankDialog';
+import { printDocument } from './features/print/print';
+import { FindPanel, useSearch } from './features/find/FindPanel';
 import { exportToImages } from './features/convert/exportImages';
 import { exportToWord } from './features/convert/exportWord';
 import { exportToExcel } from './features/convert/exportExcel';
@@ -31,7 +37,7 @@ export default function App() {
 
   const [version, setVersion] = useState<string>('');
 
-  // Global keyboard shortcuts for undo/redo
+  // Global keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
@@ -41,9 +47,9 @@ export default function App() {
         target?.isContentEditable;
       const isMod = e.ctrlKey || e.metaKey;
       if (!isMod) return;
-      // Ctrl+Z (undo) and Ctrl+Shift+Z / Ctrl+Y (redo)
+      // Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z
       if (e.key === 'z' || e.key === 'Z') {
-        if (inForm) return;
+        if (inForm && !e.shiftKey) return;
         e.preventDefault();
         if (e.shiftKey) {
           if (redo()) toast.success('Rehecho', { duration: 1200 });
@@ -55,10 +61,22 @@ export default function App() {
         e.preventDefault();
         if (redo()) toast.success('Rehecho', { duration: 1200 });
       }
+      // Ctrl+F open find (allow in form too)
+      else if (e.key === 'f' || e.key === 'F') {
+        if (!doc) return;
+        e.preventDefault();
+        useSearch.getState().setOpen(true);
+      }
+      // Ctrl+P print
+      else if (e.key === 'p' || e.key === 'P') {
+        if (!doc) return;
+        e.preventDefault();
+        printDocument();
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [doc]);
 
   // Global error visibility — surfaces any silent failure
   useEffect(() => {
@@ -132,6 +150,18 @@ export default function App() {
       window.api.onMenuEvent('menu:zoom-out', () => zoomOut()),
       window.api.onMenuEvent('menu:zoom-fit', () => zoomFit()),
       window.api.onMenuEvent('menu:about', () => showAbout(version)),
+      window.api.onMenuEvent('menu:undo', () => {
+        if (undo()) toast.success('Deshecho', { duration: 1200 });
+      }),
+      window.api.onMenuEvent('menu:redo', () => {
+        if (redo()) toast.success('Rehecho', { duration: 1200 });
+      }),
+      window.api.onMenuEvent('menu:stamps', () => showStampsDialog()),
+      window.api.onMenuEvent('menu:header-footer', () => showHeaderFooterDialog()),
+      window.api.onMenuEvent('menu:remove-watermark', () => showRemoveWatermarkDialog()),
+      window.api.onMenuEvent('menu:insert-blank', () => showInsertBlankDialog()),
+      window.api.onMenuEvent('menu:print', () => printDocument()),
+      window.api.onMenuEvent('menu:find', () => useSearch.getState().setOpen(true)),
     ];
     return () => offs.forEach((off) => off?.());
   }, [doc, loadFromBytes, zoomIn, zoomOut, zoomFit, version]);
@@ -142,8 +172,9 @@ export default function App() {
       {doc && <ToolPalette />}
       <div className="relative flex flex-1 overflow-hidden">
         {doc && showSidebar && <Sidebar />}
-        <div className="flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-hidden">
           {doc ? <PdfViewer /> : <Welcome />}
+          {doc && <FindPanel />}
         </div>
       </div>
       <StatusBar version={version} />

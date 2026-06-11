@@ -153,22 +153,24 @@ export function Toolbar({ onAbout }: { onAbout: () => void }) {
 
         <div className="h-7 w-px bg-amazon-nav-hover mx-1" />
 
-        {/* Undo / Redo */}
+        {/* Undo / Redo — yellow accent so they always stand out */}
         <button
-          className="tool-btn-nav"
+          className="tool-btn-history"
           onClick={() => undo()}
           disabled={!canUndo}
           title="Deshacer (Ctrl+Z)"
+          aria-label="Deshacer"
         >
-          <Undo2 size={18} />
+          <Undo2 size={18} strokeWidth={2.5} />
         </button>
         <button
-          className="tool-btn-nav"
+          className="tool-btn-history"
           onClick={() => redo()}
           disabled={!canRedo}
           title="Rehacer (Ctrl+Y)"
+          aria-label="Rehacer"
         >
-          <Redo2 size={18} />
+          <Redo2 size={18} strokeWidth={2.5} />
         </button>
 
         <div className="h-7 w-px bg-amazon-nav-hover mx-1" />
