@@ -6,6 +6,12 @@ interface Snapshot {
   pagesOrder: number[];
   pageRotations: Record<number, number>;
   annotations: Record<number, Annotation[]>;
+  /**
+   * Reference to the working PDF bytes at snapshot time. Working bytes are
+   * immutable (replaced wholesale on each text edit), so holding a reference
+   * is cheap and lets undo/redo restore in-place text edits too.
+   */
+  workingBytes?: ArrayBuffer;
 }
 
 interface HistoryState {
@@ -31,15 +37,14 @@ function capture(): Snapshot {
     pagesOrder: doc ? [...doc.pagesOrder] : [],
     pageRotations: doc ? { ...doc.pageRotations } : {},
     annotations: structuredClone(annStore.byPage),
+    workingBytes: doc?.workingBytes,
   };
 }
 
 /**
  * Snapshots the current state BEFORE a mutation. Call this in component
  * handlers right before invoking a store action (rotate, reorder, delete,
- * add/update/remove annotation, etc.). Clears the redo stack — once you
- * make a new change, the previously undone actions are no longer
- * recoverable, which matches what users expect from undo/redo.
+ * add/update/remove annotation, edit text, etc.). Clears the redo stack.
  */
 export function pushHistory(): void {
   const snap = capture();
@@ -51,7 +56,35 @@ export function pushHistory(): void {
 
 function applySnapshot(snap: Snapshot): void {
   const doc = useDocument.getState().doc;
-  if (doc) {
+  useAnnotations.setState({ byPage: snap.annotations, selectedId: null });
+  if (!doc) return;
+
+  const bytesChanged =
+    !!snap.workingBytes && snap.workingBytes !== doc.workingBytes;
+
+  if (bytesChanged) {
+    // Text was edited in the content stream — reload the PDF.js proxy from
+    // the snapshot bytes, then restore page order/rotations on top.
+    useDocument
+      .getState()
+      .reloadProxy(snap.workingBytes!)
+      .then(() => {
+        const d = useDocument.getState().doc;
+        if (d) {
+          useDocument.setState({
+            doc: {
+              ...d,
+              pagesOrder: snap.pagesOrder,
+              pageRotations: snap.pageRotations,
+              isDirty: true,
+            },
+          });
+        }
+      })
+      .catch(() => {
+        /* noop */
+      });
+  } else {
     useDocument.setState({
       doc: {
         ...doc,
@@ -61,7 +94,6 @@ function applySnapshot(snap: Snapshot): void {
       },
     });
   }
-  useAnnotations.setState({ byPage: snap.annotations, selectedId: null });
 }
 
 export function undo(): boolean {

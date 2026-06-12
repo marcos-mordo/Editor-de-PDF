@@ -1,10 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { useTools } from '../../stores/tools';
 import {
   useAnnotations,
   type Annotation,
   type Point,
 } from '../../stores/annotations';
+import { useDocument } from '../../stores/document';
 import { pushHistory } from '../../stores/history';
 import { showPrompt } from '../../components/Modal/prompt';
 
@@ -223,53 +225,90 @@ export function AnnotationLayer({
       setInlineEdit(null);
       return;
     }
-    pushHistory();
+
     if (inlineEdit.mode === 'edit-annotation' && inlineEdit.annotationId) {
+      pushHistory();
       if (text.trim() === '') {
         removeAnnotation(inlineEdit.annotationId);
       } else {
         updateAnnotation(inlineEdit.annotationId, { text });
       }
-    } else if (inlineEdit.mode === 'edit-existing') {
-      const bg = sampleBackgroundColor
-        ? sampleBackgroundColor(
-            inlineEdit.px,
-            inlineEdit.py,
-            inlineEdit.pw,
-            inlineEdit.ph,
-          )
-        : '#FFFFFF';
-      addAnnotation({
-        type: 'text-replace',
-        pageNumber,
-        x: inlineEdit.px,
-        y: inlineEdit.py,
-        width: Math.max(inlineEdit.pw, text.length * inlineEdit.fontSize * 0.55),
-        height: inlineEdit.fontSize + 4,
-        color: inlineEdit.color,
-        opacity: 1,
-        text,
-        oldText: inlineEdit.originalText,
-        backgroundColor: bg,
-        fontSize: inlineEdit.fontSize,
-        fontFamily: inlineEdit.fontFamily,
-      });
-    } else {
-      // "add" mode
-      addAnnotation({
-        type: 'text',
-        pageNumber,
-        x: inlineEdit.px,
-        y: inlineEdit.py,
-        width: Math.max(inlineEdit.pw, 50),
-        height: inlineEdit.fontSize + 4,
-        color: inlineEdit.color,
-        opacity: 1,
-        text,
-        fontSize: inlineEdit.fontSize,
-        fontFamily: inlineEdit.fontFamily,
-      });
+      setInlineEdit(null);
+      return;
     }
+
+    if (inlineEdit.mode === 'edit-existing') {
+      const edit = inlineEdit;
+      const original = edit.originalText ?? '';
+      // No real change → just close.
+      if (text === original) {
+        setInlineEdit(null);
+        return;
+      }
+      setInlineEdit(null);
+      // Edit the ORIGINAL PDF text directly (rewrites the content stream,
+      // re-renders the real page — no overlay, no cover box).
+      pushHistory();
+      const t = toast.loading('Editando texto…');
+      useDocument
+        .getState()
+        .applyTextEdit(pageNumber, original, text, {
+          x: edit.px,
+          y: edit.py,
+          size: edit.fontSize,
+          fontFamily: edit.fontFamily,
+        })
+        .then((ok) => {
+          toast.dismiss(t);
+          if (ok) {
+            toast.success('Texto editado', { duration: 1200 });
+          } else {
+            // The engine couldn't locate/edit this text in the stream
+            // (unusual encoding). Fall back to the cover approach so the
+            // user's edit isn't lost, and tell them why.
+            const bg = sampleBackgroundColor
+              ? sampleBackgroundColor(edit.px, edit.py, edit.pw, edit.ph)
+              : '#FFFFFF';
+            addAnnotation({
+              type: 'text-replace',
+              pageNumber,
+              x: edit.px,
+              y: edit.py,
+              width: Math.max(edit.pw, text.length * edit.fontSize * 0.55),
+              height: edit.fontSize + 4,
+              color: edit.color,
+              opacity: 1,
+              text,
+              oldText: original,
+              backgroundColor: bg,
+              fontSize: edit.fontSize,
+              fontFamily: edit.fontFamily,
+            });
+            toast('Texto editado (modo compatible)', { icon: 'ℹ️' });
+          }
+        })
+        .catch(() => {
+          toast.dismiss(t);
+          toast.error('No se pudo editar el texto');
+        });
+      return;
+    }
+
+    // "add" mode → new text annotation
+    pushHistory();
+    addAnnotation({
+      type: 'text',
+      pageNumber,
+      x: inlineEdit.px,
+      y: inlineEdit.py,
+      width: Math.max(inlineEdit.pw, 50),
+      height: inlineEdit.fontSize + 4,
+      color: inlineEdit.color,
+      opacity: 1,
+      text,
+      fontSize: inlineEdit.fontSize,
+      fontFamily: inlineEdit.fontFamily,
+    });
     setInlineEdit(null);
   }
 

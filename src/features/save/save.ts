@@ -9,7 +9,8 @@ import {
 } from 'pdf-lib';
 import { useDocument } from '../../stores/document';
 import { useAnnotations, type Annotation } from '../../stores/annotations';
-import { tryReplaceTextInPage } from './text-replace';
+import { editTextInPage } from '../textedit/engine';
+import { pickStandardFont } from '../textedit/font-match';
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '');
@@ -19,37 +20,6 @@ function hexToRgb(hex: string): RGB {
   return rgb(r || 0, g || 0, b || 0);
 }
 
-/**
- * Maps a PDF font name (whatever the source PDF used) to the closest of
- * pdf-lib's 14 standard fonts. We can't embed arbitrary fonts, but matching
- * the WEIGHT and STYLE (bold/italic/serif/mono) keeps the visual swap close
- * to invisible.
- */
-function pickStandardFont(name: string): StandardFonts {
-  const lower = name.toLowerCase();
-  const isBold = /bold|black|heavy|demi|semibold/.test(lower);
-  const isItalic = /italic|oblique|slant/.test(lower);
-  const isSerif = /times|serif|georgia|garamond|cambria|book|roman/.test(lower);
-  const isMono =
-    /courier|mono|consol|menlo|inconsolata|source\s*code/.test(lower);
-
-  if (isMono) {
-    if (isBold && isItalic) return StandardFonts.CourierBoldOblique;
-    if (isBold) return StandardFonts.CourierBold;
-    if (isItalic) return StandardFonts.CourierOblique;
-    return StandardFonts.Courier;
-  }
-  if (isSerif) {
-    if (isBold && isItalic) return StandardFonts.TimesRomanBoldItalic;
-    if (isBold) return StandardFonts.TimesRomanBold;
-    if (isItalic) return StandardFonts.TimesRomanItalic;
-    return StandardFonts.TimesRoman;
-  }
-  if (isBold && isItalic) return StandardFonts.HelveticaBoldOblique;
-  if (isBold) return StandardFonts.HelveticaBold;
-  if (isItalic) return StandardFonts.HelveticaOblique;
-  return StandardFonts.Helvetica;
-}
 
 /**
  * Builds the final PDF bytes for the current document:
@@ -99,36 +69,81 @@ export async function savePdfWithEdits(opts?: {
   }
 
   // First pass: handle text-replace annotations by editing the page content
-  // stream directly. When this works the original text is literally replaced
-  // (no cover, no overlay). When it can't (encoding the matcher doesn't
-  // recognise) we mark the annotation as a fallback so the second pass
-  // draws a cover + the new text.
+  // stream directly with the real engine.
+  //   - 'inplace': original glyphs re-encoded with the SAME embedded font.
+  //     Nothing else to draw — perfect, font/size/colour/position preserved.
+  //   - 'redraw': original glyphs REMOVED from the stream (no cover); we then
+  //     repaint the new text with a substitute font matched by weight/style at
+  //     the same position/size, using the colour the engine captured.
+  //   - failure: keep the legacy cover+text fallback so the edit isn't lost.
+  type TRPlan =
+    | { kind: 'inplace' }
+    | { kind: 'redraw'; color: { r: number; g: number; b: number } }
+    | { kind: 'fallback' };
   const annStore = useAnnotations.getState();
-  const fallbackTextReplace = new Set<string>();
+  const trPlans = new Map<string, TRPlan>();
   for (let i = 0; i < doc.pagesOrder.length; i++) {
     const annotations = annStore.byPage[doc.pagesOrder[i]] ?? [];
     for (const ann of annotations) {
       if (ann.type !== 'text-replace') continue;
-      if (!ann.oldText || ann.oldText === ann.text) continue;
+      if (!ann.oldText || ann.oldText === ann.text) {
+        trPlans.set(ann.id, { kind: 'inplace' }); // no-op edit, draw nothing
+        continue;
+      }
       try {
-        const result = await tryReplaceTextInPage(out, i, ann.oldText, ann.text ?? '');
-        if (!result.success) fallbackTextReplace.add(ann.id);
+        const result = await editTextInPage(
+          out,
+          i,
+          ann.oldText,
+          ann.text ?? '',
+          { x: ann.x, y: ann.y },
+        );
+        if (result.success && result.mode === 'inplace') {
+          trPlans.set(ann.id, { kind: 'inplace' });
+        } else if (result.success && result.mode === 'redraw') {
+          trPlans.set(ann.id, {
+            kind: 'redraw',
+            color: result.color ?? { r: 0, g: 0, b: 0 },
+          });
+        } else {
+          trPlans.set(ann.id, { kind: 'fallback' });
+        }
       } catch (e) {
-        console.warn('text-replace failed, will use fallback cover', e);
-        fallbackTextReplace.add(ann.id);
+        console.warn('text edit failed, using fallback cover', e);
+        trPlans.set(ann.id, { kind: 'fallback' });
       }
     }
   }
 
-  // Second pass: burn-in remaining annotations (and text-replace fallbacks).
+  // Second pass: burn-in remaining annotations + text-replace redraw/fallback.
   for (let i = 0; i < doc.pagesOrder.length; i++) {
     const origPage = doc.pagesOrder[i];
     const annotations = annStore.byPage[origPage] ?? [];
     if (annotations.length === 0) continue;
     const page = out.getPage(i);
     for (const ann of annotations) {
-      if (ann.type === 'text-replace' && !fallbackTextReplace.has(ann.id)) {
-        // Already handled at the content-stream level.
+      if (ann.type === 'text-replace') {
+        const plan = trPlans.get(ann.id);
+        if (!plan || plan.kind === 'inplace') {
+          continue; // handled at content-stream level
+        }
+        if (plan.kind === 'redraw') {
+          // Original text already removed from the stream. Paint the new text
+          // (no cover) with the captured colour + a weight-matched font.
+          if (ann.text && ann.text.trim() !== '') {
+            const font = await getFont(ann.fontFamily ?? 'Helvetica');
+            page.drawText(ann.text, {
+              x: ann.x,
+              y: ann.y,
+              size: ann.fontSize ?? 14,
+              font,
+              color: rgb(plan.color.r, plan.color.g, plan.color.b),
+            });
+          }
+          continue;
+        }
+        // plan.kind === 'fallback' → draw cover + text (legacy behaviour)
+        await drawAnnotation(out, page, ann, getFont);
         continue;
       }
       await drawAnnotation(out, page, ann, getFont);
