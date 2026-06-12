@@ -1,126 +1,90 @@
 ==============================================
-  EDITOR DE PDF v0.4.0
+  EDITOR DE PDF v0.6.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-(Confirmar version: Menu Ayuda -> Acerca de
-debe mostrar v0.4.0)
+(Confirmar version: Menu Ayuda -> Acerca de -> v0.6.0)
 
 
 ==============================================
- NOVEDAD GRANDE: EDITOR DE TEXTO REAL
+ EDITOR DE TEXTO REAL (reescrito de cero)
 ==============================================
 
-Eliminada la herramienta "Reemplazar texto" (era
-confusa). En su lugar hay un EDITOR DE TEXTO REAL:
+Esta version cambia POR COMPLETO como funciona la
+edicion de texto. Antes ponia una caja blanca encima
+y escribia por arriba. AHORA edita el PDF de verdad:
 
- - Activa la herramienta "Editor de texto"
-   (icono de cursor de texto, en la barra de tools).
+ 1. Activa la herramienta "Editor de texto"
+    (icono de cursor de texto en la barra de tools).
 
- - HAZ CLICK SOBRE CUALQUIER PALABRA del PDF.
-   El editor detecta automaticamente el texto que
-   has clicado y muestra un campo de edicion
-   AMARILLO posicionado encima, con LA MISMA FUENTE
-   Y TAMANO del original, pre-rellenado con el
-   texto actual.
+ 2. Haz CLICK sobre cualquier palabra del PDF.
 
- - Puedes:
-     - Corregir una palabra (errata)
-     - Borrar texto (Backspace o Suprimir)
-     - Ampliar texto (escribir mas caracteres)
-     - Cambiar partes (seleccionar, escribir)
-     - Pulsar Esc para cancelar
-     - Pulsar Enter o clicar fuera para confirmar
+ 3. La app ANALIZA el documento por dentro:
+      - encuentra el operador de dibujo que pinta ese
+        texto en el content stream
+      - decodifica los glifos usando el mapa de la
+        fuente embebida (ToUnicode), soportando fuentes
+        CID/Type0 de 2 bytes (las de Canva, plantillas
+        de CV, herramientas de diseño) y fuentes
+        simples de 1 byte (Word, navegador...)
+      - detecta su fuente, tamano, color y posicion
+        reales.
 
- - El editor cubre el texto original con blanco y
-   coloca el nuevo encima al guardar.
+ 4. Escribe el texto nuevo en el campo que aparece.
 
-Doble click sobre cualquier texto que TU has anadido
-tambien abre el editor inline directamente sobre el.
+ 5. Al confirmar (Enter), el editor:
+      - reescribe el texto DIRECTAMENTE en el PDF
+      - NO pone ninguna caja encima
+      - el texto original se ELIMINA del documento
+      - se re-renderiza la pagina real ya editada.
+
+   * Si los caracteres nuevos existen en la fuente
+     embebida (corregir una errata, cambiar un ano,
+     reordenar...) se conserva la fuente EXACTA del
+     original. Indistinguible.
+
+   * Si escribes caracteres que la fuente embebida no
+     incluye (esto pasa con fuentes "subset" de diseno
+     que solo traen las letras usadas), el editor quita
+     el texto original y lo repinta con la fuente
+     estandar mas parecida (mismo peso/estilo), en la
+     MISMA posicion, tamano y color. Sigue SIN poner
+     cajas encima.
+
+ 6. Ctrl+Z deshace la edicion (vuelve el texto original).
 
 
-==============================================
- NAVEGACION CON LA RUEDA DEL RATON
-==============================================
-
- - CLICK CON LA RUEDA DEL RATON = modo mano temporal.
-   Mantienes la rueda pulsada y mueves el raton para
-   desplazarte por el documento, AUNQUE TENGAS OTRA
-   HERRAMIENTA SELECCIONADA. Como en Photoshop o Figma.
-
- - CTRL + RUEDA = zoom in/out.
-
- - RUEDA SOLA = scroll vertical normal.
-
-
-==============================================
- OTRAS FUNCIONES DE ADOBE ACROBAT AÑADIDAS
-==============================================
-
- BUSCAR Y REEMPLAZAR (Ctrl+F)
-   Panel flotante en la esquina superior derecha.
-   - Buscar texto en todo el documento
-   - Distinguir mayusculas (opcional)
-   - Navegar entre resultados (Enter, Shift+Enter)
-   - Reemplazar uno a uno o todos a la vez
-
- IMPRIMIR (Ctrl+P)
-   Imprime el PDF con las anotaciones aplicadas.
-
- INSERTAR PAGINA EN BLANCO
-   Menu Archivo -> "Insertar pagina en blanco..."
-   - Posicion: antes/despues de actual, al principio, al final
-   - Tamanos: igual que actual, A4, Carta, Legal, A5
-   - Orientacion: vertical / horizontal
-
- ARCHIVOS RECIENTES
-   En la pantalla de inicio aparece la lista de los
-   ultimos 8 PDFs abiertos. Un click los reabre.
-   Boton para limpiar la lista.
+NOTA HONESTA sobre fuentes:
+ Un PDF "subset" solo lleva incrustados los glifos que
+ ya se usaban. Si una letra nueva no estaba en el
+ documento, fisicamente no existe en esa fuente y se
+ sustituye por la mas parecida — es la misma limitacion
+ que tiene Adobe (avisa "fuente no disponible,
+ sustituyendo"). Para correcciones y cambios normales
+ se conserva la fuente original.
 
 
 ==============================================
- LO QUE YA TENIA Y SIGUE FUNCIONANDO
+ NAVEGACION Y RESTO DE HERRAMIENTAS
 ==============================================
 
- - DESHACER/REHACER (Ctrl+Z, Ctrl+Y, botones amarillos
-   en la barra superior, menu Edicion).
- - ANOTACIONES: resaltado, subrayado, tachado,
-   rectangulos, elipses, flechas, dibujo libre, notas,
-   texto, imagenes, firma manuscrita.
- - GESTION DE PAGINAS: reordenar (arrastrar miniaturas),
-   rotar, eliminar, combinar varios PDFs, dividir.
- - OCR: reconocer texto en escaneos (es/en/fr/pt/de).
- - SEGURIDAD: marca de agua, quitar marca de agua,
-   contrasenas.
- - HERRAMIENTAS: sellos predefinidos (Aprobado,
-   Confidencial, etc.), encabezados/pies/numeros de
-   pagina, borrador (cubrir con blanco).
- - CONVERSION: PNG (ZIP), Word (.docx), Excel (.xlsx).
- - Icono naranja correcto en .exe y ventana.
- - Renderizado nitido en pantallas HiDPI.
+ - Click rueda del raton = mano temporal (mover el doc).
+ - Ctrl + rueda = zoom.
+ - Ctrl+F = buscar y reemplazar.
+ - Ctrl+P = imprimir.
+ - Ctrl+Z / Ctrl+Y = deshacer / rehacer.
 
-
-==============================================
- ATAJOS DE TECLADO
-==============================================
-
- Ctrl+O          Abrir PDF
- Ctrl+S          Guardar
- Ctrl+Shift+S    Guardar como
- Ctrl+P          Imprimir
- Ctrl+Z          Deshacer
- Ctrl+Y          Rehacer
- Ctrl+Shift+Z    Rehacer (alternativa)
- Ctrl+F          Buscar / Reemplazar
- Ctrl++/Ctrl+=   Acercar (zoom)
- Ctrl+-          Alejar (zoom)
- Ctrl+0          Restablecer zoom (100%)
- Ctrl + rueda    Zoom in/out
- Click rueda     Mano temporal (panning)
- Esc             Cerrar panel de busqueda / cancelar
- Enter           Confirmar editor / siguiente busqueda
- Shift+Enter     Anterior busqueda
+ - Anotaciones: resaltado, subrayado, tachado, formas,
+   flechas, dibujo libre, notas, anadir texto nuevo,
+   insertar imagenes, firma manuscrita.
+ - Borrador (cubrir con blanco), sellos (APROBADO,
+   CONFIDENCIAL...), encabezados/pies/numeros de pagina,
+   quitar marca de agua.
+ - Paginas: reordenar, rotar, eliminar, combinar, dividir,
+   insertar pagina en blanco.
+ - OCR (escaneos -> texto), contrasenas, marcas de agua.
+ - Exportar a PNG, Word (.docx), Excel (.xlsx).
+ - Archivos recientes en la pantalla de inicio.
 
 
 ==============================================
@@ -128,19 +92,14 @@ tambien abre el editor inline directamente sobre el.
 ==============================================
 
 OPCION 1: "Editor de PDF - Instalador.exe"
- - Doble click para instalarlo.
- - Acceso directo en menu Inicio y escritorio.
+ - Doble click para instalarlo. Crea acceso directo.
  - Desinstalar: Panel de control -> Programas.
 
 OPCION 2: "Editor de PDF - Portable.exe"
- - Doble click y se ejecuta sin instalar.
- - Llevatelo en USB.
+ - Doble click y se ejecuta sin instalar (USB-friendly).
 
-Windows mostrara "SmartScreen". Pulsa "Mas informacion"
--> "Ejecutar de todas formas".
-
-Esta version arregla tambien el error "Installer
-integrity check has failed" de la version anterior.
+Windows mostrara "SmartScreen" (app sin firma de pago).
+Pulsa "Mas informacion" -> "Ejecutar de todas formas".
 
 
 ==============================================
@@ -157,11 +116,11 @@ integrity check has failed" de la version anterior.
  SI ALGO FALLA
 ==============================================
 
-La app guarda log en:
-    C:\Users\<TU_USUARIO>\.editor-de-pdf\
+Logs en:  C:\Users\<TU_USUARIO>\.editor-de-pdf\
+Tambien:  Menu Ayuda -> Abrir carpeta de logs
 
-Tambien accesible desde:
-    Menu Ayuda -> Abrir carpeta de logs
+Codigo fuente:
+  https://github.com/marcos-mordo/Editor-de-PDF
 
 
 Disfruta!

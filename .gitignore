@@ -12,4 +12,5 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
-Para compartir/*.exescripts/test-out.mjs
+Para compartir/*.exe
+scripts/test-out.mjs

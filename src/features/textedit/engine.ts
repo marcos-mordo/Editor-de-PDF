@@ -402,74 +402,90 @@ export async function editTextInPage(
     operands = [];
   }
 
-  // --- Find the show op(s) matching oldText ---
-  const wanted = oldText;
+  // --- Find the show op containing oldText, and WHERE inside it ---
   const wantedNoSpace = oldText.replace(/\s+/g, '');
 
-  // Score candidates: prefer exact text match, then position proximity.
-  interface Candidate {
-    ops: ShowOp[];
-    exact: boolean;
+  interface Located {
+    op: ShowOp;
+    /** Text before the match within the same op (kept, re-encoded). */
+    before: string;
+    /** Text after the match within the same op (kept, re-encoded). */
+    after: string;
+    /** True when oldText is the ENTIRE op text (no neighbours). */
+    whole: boolean;
+    /** Quality: exact char match (2) > space-insensitive (1). */
+    quality: number;
   }
-  const candidates: Candidate[] = [];
+
+  const located: Located[] = [];
   for (const sop of showOps) {
     const t = sop.text;
-    if (t === wanted || t.replace(/\s+/g, '') === wantedNoSpace) {
-      candidates.push({ ops: [sop], exact: true });
-    } else if (t.includes(wanted) || t.replace(/\s+/g, '').includes(wantedNoSpace)) {
-      candidates.push({ ops: [sop], exact: false });
+    if (t === oldText) {
+      located.push({ op: sop, before: '', after: '', whole: true, quality: 2 });
+      continue;
+    }
+    const idx = t.indexOf(oldText);
+    if (idx >= 0) {
+      located.push({
+        op: sop,
+        before: t.slice(0, idx),
+        after: t.slice(idx + oldText.length),
+        whole: idx === 0 && idx + oldText.length === t.length,
+        quality: 2,
+      });
+      continue;
+    }
+    // Space-insensitive whole-op match (CID fonts where spaces are kerning,
+    // so the decoded op text has no space characters).
+    if (t.replace(/\s+/g, '') === wantedNoSpace) {
+      located.push({ op: sop, before: '', after: '', whole: true, quality: 1 });
     }
   }
 
-  if (candidates.length === 0) return { success: false };
+  if (located.length === 0) return { success: false };
 
-  // Pick the candidate nearest the click position (if provided).
-  let chosen = candidates[0];
-  if (near) {
-    let best = Infinity;
-    for (const c of candidates) {
-      const op = c.ops[0];
-      const d = Math.hypot(op.tx - near.x, op.ty - near.y);
-      if (d < best) {
-        best = d;
-        chosen = c;
-      }
+  // Choose: highest quality, then nearest the click position.
+  located.sort((a, b) => {
+    if (a.quality !== b.quality) return b.quality - a.quality;
+    if (near) {
+      const da = Math.hypot(a.op.tx - near.x, a.op.ty - near.y);
+      const db = Math.hypot(b.op.tx - near.x, b.op.ty - near.y);
+      return da - db;
     }
-  } else {
-    const exact = candidates.find((c) => c.exact);
-    if (exact) chosen = exact;
-  }
-
-  const targetOp = chosen.ops[0];
+    return 0;
+  });
+  const target = located[0];
+  const targetOp = target.op;
   const cmap = fonts.get(targetOp.fontName) ?? identityLatin1CMap(1);
 
-  // --- Try in-place re-encode with the SAME font ---
-  const encoded = encodeText(newText, cmap);
+  // Reconstruct the FULL new text for this op so neighbouring text inside the
+  // same operator is preserved exactly.
+  const fullNew = target.before + newText + target.after;
+  const encoded = encodeText(fullNew, cmap);
+
   let mode: 'inplace' | 'redraw';
   let replacement: string;
 
   if (encoded) {
-    // Build a hex string operand and the right operator.
     const hex = encoded
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
       .toUpperCase();
-    if (targetOp.operator === 'TJ') {
-      replacement = `[<${hex}>]TJ`;
-    } else {
-      replacement = `<${hex}>${targetOp.operator}`;
-    }
+    replacement =
+      targetOp.operator === 'TJ' ? `[<${hex}>]TJ` : `<${hex}>${targetOp.operator}`;
     mode = 'inplace';
   } else {
-    // Can't render new glyphs in the embedded subset → remove original text,
-    // caller repaints with a substitute font.
-    if (targetOp.operator === 'TJ') {
-      replacement = `[]TJ`;
-    } else {
-      replacement = `(${targetOp.operator === '"' ? '' : ''})${targetOp.operator}`;
-      // Keep it simple & valid: empty literal string then operator.
-      replacement = `()${targetOp.operator}`;
+    // Some new glyph isn't in the embedded subset.
+    if (!target.whole) {
+      // Editing a substring of a larger run that we can't re-encode would
+      // require partial removal + repaint at an unknown x — too risky (could
+      // shift neighbours). Bail so the caller uses the safe cover fallback
+      // that only touches the matched rectangle.
+      return { success: false };
     }
+    // Whole-op match: safe to remove the original glyphs entirely and let the
+    // caller repaint the new text with a substitute font.
+    replacement = targetOp.operator === 'TJ' ? `[]TJ` : `()${targetOp.operator}`;
     mode = 'redraw';
   }
 
@@ -484,7 +500,6 @@ export async function editTextInPage(
   newDict.set(PDFName.of('Length'), PDFNumber.of(newBytes.length));
   const newStream = PDFRawStream.of(newDict, newBytes);
   const newRef = ctx.register(newStream);
-  // Replace the whole Contents with our single rewritten stream.
   page.node.set(PDFName.of('Contents'), newRef);
 
   return { success: true, mode, color: targetOp.color };

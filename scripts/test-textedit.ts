@@ -120,6 +120,74 @@ async function main() {
     check('Test2 misspelling removed', !readable.includes('Helllo World'));
   }
 
+  // --- Test 3: edit a substring inside a larger run — neighbours must survive ---
+  {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.addPage([500, 150]);
+    page.drawText('Hello World Foo Bar', { x: 30, y: 80, size: 16, font });
+    const bytes = await doc.save();
+    const reloaded = await PDFDocument.load(bytes);
+    const result = await editTextInPage(reloaded, 0, 'World', 'Planet', {
+      x: 30,
+      y: 80,
+    });
+    check('Test3 substring edit success', result.success, `mode=${result.mode}`);
+    const editedBytes = await reloaded.save();
+    const finalDoc = await PDFDocument.load(editedBytes);
+    const readable = readableText(await getPageContentString(finalDoc, 0));
+    check('Test3 result has full corrected line', readable.includes('Hello Planet Foo Bar'));
+    check('Test3 neighbour "Hello" preserved', readable.includes('Hello'));
+    check('Test3 neighbour "Foo Bar" preserved', readable.includes('Foo Bar'));
+    check('Test3 old word removed', !readable.includes('World'));
+  }
+
+  // --- Test 4: TJ array operator with kerning ---
+  {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.addPage([500, 150]);
+    page.drawText('seed', { x: 0, y: 0, size: 1, font }); // force /Font resource
+    // Find the font resource name pdf-lib assigned.
+    const ctx = doc.context;
+    const res = ctx.lookup(page.node.get(PDFName.of('Resources'))) as any;
+    const fontDict = ctx.lookup(res.get(PDFName.of('Font'))) as any;
+    const fontName = fontDict.entries()[0][0].asString().replace(/^\//, '');
+    // Replace the page content with a TJ-based stream.
+    const streamText = `BT /${fontName} 20 Tf 40 90 Td [(Hola )-60(Mundo)] TJ ET`;
+    const enc = new TextEncoder().encode(streamText);
+    const dict = ctx.obj({}) as any;
+    dict.set(PDFName.of('Length'), (await import('pdf-lib')).PDFNumber.of(enc.length));
+    const stream = PDFRawStream.of(dict, enc);
+    page.node.set(PDFName.of('Contents'), ctx.register(stream));
+    const bytes = await doc.save();
+
+    const reloaded = await PDFDocument.load(bytes);
+    const result = await editTextInPage(reloaded, 0, 'Hola Mundo', 'Adios Tierra', {
+      x: 40,
+      y: 90,
+    });
+    check('Test4 TJ edit success', result.success, `mode=${result.mode}`);
+    const editedBytes = await reloaded.save();
+    const readable = readableText(
+      await getPageContentString(await PDFDocument.load(editedBytes), 0),
+    );
+    check('Test4 new text present', readable.includes('Adios Tierra'));
+    check('Test4 old text removed', !readable.includes('Mundo'));
+  }
+
+  // --- Test 5: text NOT present returns failure (no accidental edit) ---
+  {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.addPage([300, 100]);
+    page.drawText('Something', { x: 20, y: 50, size: 14, font });
+    const bytes = await doc.save();
+    const reloaded = await PDFDocument.load(bytes);
+    const result = await editTextInPage(reloaded, 0, 'NotThere', 'X', { x: 20, y: 50 });
+    check('Test5 missing text reports failure', !result.success);
+  }
+
   console.log(`\n=== ${pass}/${pass + fail} checks passed ===`);
   if (fail > 0) process.exit(1);
 }
