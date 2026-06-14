@@ -1,7 +1,10 @@
 import { create } from 'zustand';
+import { PDFDocument, rgb } from 'pdf-lib';
 import type { PDFDocumentProxy } from '../lib/pdfjs';
 import { pdfjsLib } from '../lib/pdfjs';
-import { generateId } from '../lib/utils';
+import { generateId, toArrayBuffer } from '../lib/utils';
+import { editTextInPage } from '../features/textedit/engine';
+import { pickStandardFont } from '../features/textedit/font-match';
 
 export interface PdfDoc {
   id: string;
@@ -40,6 +43,19 @@ interface DocumentState {
   deletePages: (originalPageNumbers: number[]) => void;
   markDirty: () => void;
   setWorkingBytes: (bytes: ArrayBuffer) => Promise<void>;
+  /** Reload the PDF.js proxy from new bytes WITHOUT resetting page order/rotations. */
+  reloadProxy: (bytes: ArrayBuffer) => Promise<void>;
+  /**
+   * Edit existing PDF text in place by rewriting the page content stream.
+   * No overlay, no cover — the original glyphs are re-encoded (same font) or
+   * removed and repainted with a weight-matched font. Re-renders on success.
+   */
+  applyTextEdit: (
+    originalPageNumber: number,
+    oldText: string,
+    newText: string,
+    pos: { x: number; y: number; size: number; fontFamily: string },
+  ) => Promise<boolean>;
 }
 
 export const useDocument = create<DocumentState>((set, get) => ({
@@ -195,5 +211,62 @@ export const useDocument = create<DocumentState>((set, get) => ({
         isDirty: false,
       },
     });
+  },
+
+  reloadProxy: async (bytes) => {
+    const { doc } = get();
+    if (!doc) return;
+    const clone = bytes.slice(0);
+    const newProxy = await pdfjsLib.getDocument({ data: clone }).promise;
+    const oldProxy = doc.proxy;
+    set({
+      doc: { ...doc, workingBytes: bytes, proxy: newProxy, isDirty: true },
+    });
+    try {
+      await oldProxy.destroy();
+    } catch {
+      /* noop */
+    }
+  },
+
+  applyTextEdit: async (originalPageNumber, oldText, newText, pos) => {
+    const { doc } = get();
+    if (!doc) return false;
+    if (!originalPageNumber) return false;
+    try {
+      const pdfDoc = await PDFDocument.load(doc.workingBytes.slice(0), {
+        ignoreEncryption: true,
+      });
+      const pageIndex = originalPageNumber - 1;
+      const result = await editTextInPage(
+        pdfDoc,
+        pageIndex,
+        oldText,
+        newText,
+        { x: pos.x, y: pos.y },
+      );
+      if (!result.success) return false;
+
+      if (result.mode === 'redraw' && newText.trim() !== '') {
+        const font = await pdfDoc.embedFont(pickStandardFont(pos.fontFamily));
+        const page = pdfDoc.getPage(pageIndex);
+        const c = result.color ?? { r: 0, g: 0, b: 0 };
+        page.drawText(newText, {
+          x: pos.x,
+          y: pos.y,
+          size: pos.size,
+          font,
+          color: rgb(c.r, c.g, c.b),
+        });
+      }
+
+      const saved = await pdfDoc.save();
+      const ab = toArrayBuffer(saved);
+      await get().reloadProxy(ab);
+      return true;
+    } catch (e) {
+      console.error('applyTextEdit failed', e);
+      return false;
+    }
   },
 }));

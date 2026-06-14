@@ -12,7 +12,8 @@ export type AnnotationType =
   | 'text'
   | 'note'
   | 'image'
-  | 'signature';
+  | 'signature'
+  | 'text-replace';
 
 export interface Point {
   x: number;
@@ -39,6 +40,10 @@ export interface Annotation {
   /** For image / signature annotations */
   imageData?: string;
   imageType?: 'png' | 'jpg';
+  /** For text-replace annotations: the original text in the PDF content stream. */
+  oldText?: string;
+  /** Background colour sampled around the original text (used for fallback cover). */
+  backgroundColor?: string;
 }
 
 interface AnnotationsState {

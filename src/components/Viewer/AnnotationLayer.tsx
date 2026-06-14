@@ -1,10 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { useTools } from '../../stores/tools';
 import {
   useAnnotations,
   type Annotation,
   type Point,
 } from '../../stores/annotations';
+import { useDocument } from '../../stores/document';
 import { pushHistory } from '../../stores/history';
 import { showPrompt } from '../../components/Modal/prompt';
 
@@ -88,6 +90,8 @@ interface InlineEdit {
   fontFamily: string;
   color: string;
   text: string;
+  /** Original text when editing existing PDF text — used so save can find it in the content stream. */
+  originalText?: string;
   /** "add" = new text. "edit-existing" = replace original PDF text. "edit-annotation" = modify an existing annotation. */
   mode: 'add' | 'edit-existing' | 'edit-annotation';
   annotationId?: string;
@@ -99,18 +103,47 @@ interface InlineEdit {
  * actually select the whole word (and continuous neighbours), not just
  * a single character span — PDF text content is often very granular.
  */
+/** Heuristic: extract bold/italic from a PDF font name like "Inter-Bold". */
+function detectWeightStyle(fontName: string): { bold: boolean; italic: boolean } {
+  const lower = (fontName || '').toLowerCase();
+  return {
+    bold: /bold|black|heavy|demi|semibold/.test(lower),
+    italic: /italic|oblique|slant/.test(lower),
+  };
+}
+
 function findTextRunAt(
   pdfX: number,
   pdfY: number,
   items: TextItemData[],
 ): TextItemData[] {
-  const clicked = items.find(
-    (it) =>
-      pdfX >= it.x &&
-      pdfX <= it.x + it.width &&
-      pdfY >= it.y &&
-      pdfY <= it.y + it.height,
-  );
+  // Forgiving hit test: a PDF text item's y is the BASELINE, so the glyphs
+  // extend upward (cap height) and a little below (descenders). Clicking is
+  // imprecise, so pad the box generously and, when several boxes overlap,
+  // pick the item whose centre is nearest the click. This is the difference
+  // between "I clicked the word and nothing happened" and it just working.
+  let clicked: TextItemData | undefined;
+  let bestDist = Infinity;
+  for (const it of items) {
+    if (!it.str || it.width <= 0) continue;
+    const h = it.height > 0 ? it.height : 8;
+    const padX = Math.max(1, h * 0.15);
+    const padBelow = Math.max(2, h * 0.5); // descenders + slack
+    const padAbove = Math.max(2, h * 0.4);
+    const x0 = it.x - padX;
+    const x1 = it.x + it.width + padX;
+    const y0 = it.y - padBelow;
+    const y1 = it.y + h + padAbove;
+    if (pdfX >= x0 && pdfX <= x1 && pdfY >= y0 && pdfY <= y1) {
+      const cx = it.x + it.width / 2;
+      const cy = it.y + h / 2;
+      const d = Math.hypot(pdfX - cx, pdfY - cy);
+      if (d < bestDist) {
+        bestDist = d;
+        clicked = it;
+      }
+    }
+  }
   if (!clicked) return [];
 
   // Same-line items: same baseline y (within tolerance) and same font height.
@@ -212,66 +245,90 @@ export function AnnotationLayer({
       setInlineEdit(null);
       return;
     }
-    pushHistory();
+
     if (inlineEdit.mode === 'edit-annotation' && inlineEdit.annotationId) {
+      pushHistory();
       if (text.trim() === '') {
         removeAnnotation(inlineEdit.annotationId);
       } else {
         updateAnnotation(inlineEdit.annotationId, { text });
       }
-    } else if (inlineEdit.mode === 'edit-existing') {
-      // Cover original with the surrounding background colour (NOT plain
-      // white) so coloured backgrounds, watermarks and images stay visible.
-      const bg = sampleBackgroundColor
-        ? sampleBackgroundColor(
-            inlineEdit.px,
-            inlineEdit.py,
-            inlineEdit.pw,
-            inlineEdit.ph,
-          )
-        : '#FFFFFF';
-      addAnnotation({
-        type: 'rect',
-        pageNumber,
-        x: inlineEdit.px - 1,
-        y: inlineEdit.py - 1,
-        width: inlineEdit.pw + 2,
-        height: inlineEdit.ph + 2,
-        color: bg,
-        opacity: 1,
-        strokeWidth: 0,
-      });
-      if (text.trim() !== '') {
-        addAnnotation({
-          type: 'text',
-          pageNumber,
-          x: inlineEdit.px,
-          y: inlineEdit.py,
-          width: Math.max(inlineEdit.pw, text.length * inlineEdit.fontSize * 0.55),
-          height: inlineEdit.fontSize + 4,
-          color: inlineEdit.color,
-          opacity: 1,
-          text,
-          fontSize: inlineEdit.fontSize,
-          fontFamily: inlineEdit.fontFamily,
-        });
-      }
-    } else {
-      // "add" mode
-      addAnnotation({
-        type: 'text',
-        pageNumber,
-        x: inlineEdit.px,
-        y: inlineEdit.py,
-        width: Math.max(inlineEdit.pw, 50),
-        height: inlineEdit.fontSize + 4,
-        color: inlineEdit.color,
-        opacity: 1,
-        text,
-        fontSize: inlineEdit.fontSize,
-        fontFamily: inlineEdit.fontFamily,
-      });
+      setInlineEdit(null);
+      return;
     }
+
+    if (inlineEdit.mode === 'edit-existing') {
+      const edit = inlineEdit;
+      const original = edit.originalText ?? '';
+      // No real change → just close.
+      if (text === original) {
+        setInlineEdit(null);
+        return;
+      }
+      setInlineEdit(null);
+      // Edit the ORIGINAL PDF text directly (rewrites the content stream,
+      // re-renders the real page — no overlay, no cover box).
+      pushHistory();
+      const t = toast.loading('Editando texto…');
+      useDocument
+        .getState()
+        .applyTextEdit(pageNumber, original, text, {
+          x: edit.px,
+          y: edit.py,
+          size: edit.fontSize,
+          fontFamily: edit.fontFamily,
+        })
+        .then((ok) => {
+          toast.dismiss(t);
+          if (ok) {
+            toast.success('Texto editado', { duration: 1200 });
+          } else {
+            // The engine couldn't locate/edit this text in the stream
+            // (unusual encoding). Fall back to the cover approach so the
+            // user's edit isn't lost, and tell them why.
+            const bg = sampleBackgroundColor
+              ? sampleBackgroundColor(edit.px, edit.py, edit.pw, edit.ph)
+              : '#FFFFFF';
+            addAnnotation({
+              type: 'text-replace',
+              pageNumber,
+              x: edit.px,
+              y: edit.py,
+              width: Math.max(edit.pw, text.length * edit.fontSize * 0.55),
+              height: edit.fontSize + 4,
+              color: edit.color,
+              opacity: 1,
+              text,
+              oldText: original,
+              backgroundColor: bg,
+              fontSize: edit.fontSize,
+              fontFamily: edit.fontFamily,
+            });
+            toast('Texto editado (modo compatible)', { icon: 'ℹ️' });
+          }
+        })
+        .catch(() => {
+          toast.dismiss(t);
+          toast.error('No se pudo editar el texto');
+        });
+      return;
+    }
+
+    // "add" mode → new text annotation
+    pushHistory();
+    addAnnotation({
+      type: 'text',
+      pageNumber,
+      x: inlineEdit.px,
+      y: inlineEdit.py,
+      width: Math.max(inlineEdit.pw, 50),
+      height: inlineEdit.fontSize + 4,
+      color: inlineEdit.color,
+      opacity: 1,
+      text,
+      fontSize: inlineEdit.fontSize,
+      fontFamily: inlineEdit.fontFamily,
+    });
     setInlineEdit(null);
   }
 
@@ -331,17 +388,42 @@ export function AnnotationLayer({
     const p = screenToPdf(sx, sy, width, height, zoom, rotation);
     const run = findTextRunAt(p.x, p.y, textItems);
     if (run.length === 0) return false;
+    const sortedRun = [...run].sort((a, b) => a.x - b.x);
     // Compute combined bounds of the run
-    const minX = Math.min(...run.map((r) => r.x));
-    const maxX = Math.max(...run.map((r) => r.x + r.width));
-    const minY = Math.min(...run.map((r) => r.y));
-    const maxH = Math.max(...run.map((r) => r.height));
+    const minX = Math.min(...sortedRun.map((r) => r.x));
+    const maxX = Math.max(...sortedRun.map((r) => r.x + r.width));
+    const minY = Math.min(...sortedRun.map((r) => r.y));
+    const maxH = Math.max(...sortedRun.map((r) => r.height));
     const pw = maxX - minX;
     const ph = maxH;
     const px = minX;
     const py = minY;
     const screen = pdfRectToScreen(px, py, pw, ph);
-    const text = run.map((r) => r.str).join('');
+    // Reconstruct the text preserving spaces: PDF often splits a single
+    // visible line into multiple text items with no explicit space chars
+    // — the gap between items IS the space. Detect that gap and put a
+    // space back.
+    let text = '';
+    for (let i = 0; i < sortedRun.length; i++) {
+      if (i > 0) {
+        const prev = sortedRun[i - 1];
+        const curr = sortedRun[i];
+        const gap = curr.x - (prev.x + prev.width);
+        const spaceWidth = Math.max(prev.height * 0.2, 1);
+        if (
+          gap >= spaceWidth &&
+          !prev.str.endsWith(' ') &&
+          !curr.str.startsWith(' ')
+        ) {
+          text += ' ';
+        }
+      }
+      text += sortedRun[i].str;
+    }
+    // Pick the dominant font name across the run — we use this to choose a
+    // matching standard font (bold/italic/serif/mono) when the content-stream
+    // edit can't apply and we have to fall back to drawing on top.
+    const fontFamily = sortedRun[0]?.fontName || 'Helvetica';
     setInlineEdit({
       sx: screen.x,
       sy: screen.y,
@@ -352,9 +434,10 @@ export function AnnotationLayer({
       pw,
       ph,
       fontSize: maxH,
-      fontFamily: 'Helvetica',
+      fontFamily,
       color: '#000000',
       text,
+      originalText: text,
       mode: 'edit-existing',
     });
     return true;
@@ -759,7 +842,8 @@ export function AnnotationLayer({
               />
             );
           }
-          case 'text':
+          case 'text': {
+            const ws = detectWeightStyle(a.fontFamily ?? '');
             return (
               <text
                 key={a.id}
@@ -768,6 +852,8 @@ export function AnnotationLayer({
                 fill={a.color}
                 fontSize={(a.fontSize ?? 14) * zoom}
                 fontFamily={a.fontFamily ?? 'Helvetica'}
+                fontWeight={ws.bold ? 'bold' : 'normal'}
+                fontStyle={ws.italic ? 'italic' : 'normal'}
                 onClick={onClick}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -794,6 +880,7 @@ export function AnnotationLayer({
                 {a.text}
               </text>
             );
+          }
           case 'note':
             return (
               <g
@@ -841,6 +928,59 @@ export function AnnotationLayer({
                 style={{ cursor: 'pointer' }}
               />
             );
+          case 'text-replace': {
+            // Visual preview while viewing — the saved PDF will either
+            // (a) modify the content stream directly (no cover) or
+            // (b) fall back to drawing this cover + text. Either way the
+            // user sees the same result on screen during editing.
+            const bg = a.backgroundColor ?? '#FFFFFF';
+            const wsR = detectWeightStyle(a.fontFamily ?? '');
+            return (
+              <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
+                <rect
+                  x={s.x - 1}
+                  y={s.y - 1}
+                  width={s.w + 2}
+                  height={s.h + 2}
+                  fill={bg}
+                  opacity={1}
+                />
+                <text
+                  x={s.x}
+                  y={s.y + s.h * 0.8}
+                  fill={a.color}
+                  fontSize={(a.fontSize ?? 14) * zoom}
+                  fontFamily={a.fontFamily ?? 'Helvetica'}
+                  fontWeight={wsR.bold ? 'bold' : 'normal'}
+                  fontStyle={wsR.italic ? 'italic' : 'normal'}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setInlineEdit({
+                      sx: s.x,
+                      sy: s.y,
+                      sw: Math.max(120, s.w),
+                      sh: Math.max(28, s.h),
+                      px: a.x,
+                      py: a.y,
+                      pw: a.width,
+                      ph: a.height,
+                      fontSize: a.fontSize ?? 14,
+                      fontFamily: a.fontFamily ?? 'Helvetica',
+                      color: a.color,
+                      text: a.text ?? '',
+                      originalText: a.oldText ?? a.text,
+                      mode: 'edit-annotation',
+                      annotationId: a.id,
+                    });
+                  }}
+                  style={{ cursor: 'text', userSelect: 'none' }}
+                >
+                  <title>Doble click para editar</title>
+                  {a.text}
+                </text>
+              </g>
+            );
+          }
           default:
             return null;
         }
@@ -968,6 +1108,12 @@ export function AnnotationLayer({
               minHeight: 28,
               fontSize: inlineEdit.fontSize * zoom,
               fontFamily: inlineEdit.fontFamily,
+              fontWeight: detectWeightStyle(inlineEdit.fontFamily).bold
+                ? 'bold'
+                : 'normal',
+              fontStyle: detectWeightStyle(inlineEdit.fontFamily).italic
+                ? 'italic'
+                : 'normal',
               color: inlineEdit.color,
               background: 'rgba(255, 255, 255, 0.97)',
               border: '2px solid #FF9900',

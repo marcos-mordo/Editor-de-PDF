@@ -9,6 +9,8 @@ import {
 } from 'pdf-lib';
 import { useDocument } from '../../stores/document';
 import { useAnnotations, type Annotation } from '../../stores/annotations';
+import { editTextInPage } from '../textedit/engine';
+import { pickStandardFont } from '../textedit/font-match';
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '');
@@ -17,6 +19,7 @@ function hexToRgb(hex: string): RGB {
   const b = parseInt(m.slice(4, 6), 16) / 255;
   return rgb(r || 0, g || 0, b || 0);
 }
+
 
 /**
  * Builds the final PDF bytes for the current document:
@@ -52,42 +55,97 @@ export async function savePdfWithEdits(opts?: {
     }
   });
 
-  // Fonts cache
+  // Fonts cache. Map a PDF font name (any vendor name like "Inter-Bold",
+  // "ArialMT", "TimesNewRoman-Italic", "F0", "TT2") to the closest PDF
+  // standard font we can embed via pdf-lib.
   const fontCache = new Map<string, PDFFont>();
   async function getFont(name: string): Promise<PDFFont> {
     const key = name || 'Helvetica';
     if (fontCache.has(key)) return fontCache.get(key)!;
-    let stdFont: StandardFonts = StandardFonts.Helvetica;
-    switch (key.toLowerCase()) {
-      case 'times-roman':
-      case 'times':
-        stdFont = StandardFonts.TimesRoman;
-        break;
-      case 'courier':
-        stdFont = StandardFonts.Courier;
-        break;
-      case 'helvetica-bold':
-        stdFont = StandardFonts.HelveticaBold;
-        break;
-      case 'helvetica-oblique':
-        stdFont = StandardFonts.HelveticaOblique;
-        break;
-      default:
-        stdFont = StandardFonts.Helvetica;
-    }
+    const stdFont = pickStandardFont(key);
     const f = await out.embedFont(stdFont);
     fontCache.set(key, f);
     return f;
   }
 
-  // Burn-in annotations
+  // First pass: handle text-replace annotations by editing the page content
+  // stream directly with the real engine.
+  //   - 'inplace': original glyphs re-encoded with the SAME embedded font.
+  //     Nothing else to draw — perfect, font/size/colour/position preserved.
+  //   - 'redraw': original glyphs REMOVED from the stream (no cover); we then
+  //     repaint the new text with a substitute font matched by weight/style at
+  //     the same position/size, using the colour the engine captured.
+  //   - failure: keep the legacy cover+text fallback so the edit isn't lost.
+  type TRPlan =
+    | { kind: 'inplace' }
+    | { kind: 'redraw'; color: { r: number; g: number; b: number } }
+    | { kind: 'fallback' };
   const annStore = useAnnotations.getState();
+  const trPlans = new Map<string, TRPlan>();
+  for (let i = 0; i < doc.pagesOrder.length; i++) {
+    const annotations = annStore.byPage[doc.pagesOrder[i]] ?? [];
+    for (const ann of annotations) {
+      if (ann.type !== 'text-replace') continue;
+      if (!ann.oldText || ann.oldText === ann.text) {
+        trPlans.set(ann.id, { kind: 'inplace' }); // no-op edit, draw nothing
+        continue;
+      }
+      try {
+        const result = await editTextInPage(
+          out,
+          i,
+          ann.oldText,
+          ann.text ?? '',
+          { x: ann.x, y: ann.y },
+        );
+        if (result.success && result.mode === 'inplace') {
+          trPlans.set(ann.id, { kind: 'inplace' });
+        } else if (result.success && result.mode === 'redraw') {
+          trPlans.set(ann.id, {
+            kind: 'redraw',
+            color: result.color ?? { r: 0, g: 0, b: 0 },
+          });
+        } else {
+          trPlans.set(ann.id, { kind: 'fallback' });
+        }
+      } catch (e) {
+        console.warn('text edit failed, using fallback cover', e);
+        trPlans.set(ann.id, { kind: 'fallback' });
+      }
+    }
+  }
+
+  // Second pass: burn-in remaining annotations + text-replace redraw/fallback.
   for (let i = 0; i < doc.pagesOrder.length; i++) {
     const origPage = doc.pagesOrder[i];
     const annotations = annStore.byPage[origPage] ?? [];
     if (annotations.length === 0) continue;
     const page = out.getPage(i);
     for (const ann of annotations) {
+      if (ann.type === 'text-replace') {
+        const plan = trPlans.get(ann.id);
+        if (!plan || plan.kind === 'inplace') {
+          continue; // handled at content-stream level
+        }
+        if (plan.kind === 'redraw') {
+          // Original text already removed from the stream. Paint the new text
+          // (no cover) with the captured colour + a weight-matched font.
+          if (ann.text && ann.text.trim() !== '') {
+            const font = await getFont(ann.fontFamily ?? 'Helvetica');
+            page.drawText(ann.text, {
+              x: ann.x,
+              y: ann.y,
+              size: ann.fontSize ?? 14,
+              font,
+              color: rgb(plan.color.r, plan.color.g, plan.color.b),
+            });
+          }
+          continue;
+        }
+        // plan.kind === 'fallback' → draw cover + text (legacy behaviour)
+        await drawAnnotation(out, page, ann, getFont);
+        continue;
+      }
       await drawAnnotation(out, page, ann, getFont);
     }
   }
@@ -245,6 +303,34 @@ async function drawAnnotation(
         color,
         opacity,
       });
+      break;
+    }
+    case 'text-replace': {
+      // Fallback path: only reached when content-stream rewriting didn't
+      // match this PDF's encoding. Cover the original area with the sampled
+      // background colour and draw the new text on top.
+      const bg = hexToRgb(ann.backgroundColor ?? '#FFFFFF');
+      page.drawRectangle({
+        x: ann.x - 1,
+        y: ann.y - 1,
+        width: ann.width + 2,
+        height: ann.height + 2,
+        color: bg,
+        opacity: 1,
+        borderWidth: 0,
+      });
+      if (ann.text && ann.text.trim() !== '') {
+        const font = await getFont(ann.fontFamily ?? 'Helvetica');
+        const size = ann.fontSize ?? 14;
+        page.drawText(ann.text, {
+          x: ann.x,
+          y: ann.y,
+          size,
+          font,
+          color,
+          opacity,
+        });
+      }
       break;
     }
     case 'note': {

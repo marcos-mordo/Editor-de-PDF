@@ -13,3 +13,4 @@ Thumbs.db
 .idea/
 .claude/
 Para compartir/*.exe
+scripts/test-out.mjs
