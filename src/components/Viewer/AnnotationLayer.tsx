@@ -117,13 +117,33 @@ function findTextRunAt(
   pdfY: number,
   items: TextItemData[],
 ): TextItemData[] {
-  const clicked = items.find(
-    (it) =>
-      pdfX >= it.x &&
-      pdfX <= it.x + it.width &&
-      pdfY >= it.y &&
-      pdfY <= it.y + it.height,
-  );
+  // Forgiving hit test: a PDF text item's y is the BASELINE, so the glyphs
+  // extend upward (cap height) and a little below (descenders). Clicking is
+  // imprecise, so pad the box generously and, when several boxes overlap,
+  // pick the item whose centre is nearest the click. This is the difference
+  // between "I clicked the word and nothing happened" and it just working.
+  let clicked: TextItemData | undefined;
+  let bestDist = Infinity;
+  for (const it of items) {
+    if (!it.str || it.width <= 0) continue;
+    const h = it.height > 0 ? it.height : 8;
+    const padX = Math.max(1, h * 0.15);
+    const padBelow = Math.max(2, h * 0.5); // descenders + slack
+    const padAbove = Math.max(2, h * 0.4);
+    const x0 = it.x - padX;
+    const x1 = it.x + it.width + padX;
+    const y0 = it.y - padBelow;
+    const y1 = it.y + h + padAbove;
+    if (pdfX >= x0 && pdfX <= x1 && pdfY >= y0 && pdfY <= y1) {
+      const cx = it.x + it.width / 2;
+      const cy = it.y + h / 2;
+      const d = Math.hypot(pdfX - cx, pdfY - cy);
+      if (d < bestDist) {
+        bestDist = d;
+        clicked = it;
+      }
+    }
+  }
   if (!clicked) return [];
 
   // Same-line items: same baseline y (within tolerance) and same font height.
