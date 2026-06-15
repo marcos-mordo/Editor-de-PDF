@@ -14,6 +14,7 @@ export function PdfViewer() {
   const zoom = useDocument((s) => s.zoom);
   const setZoom = useDocument((s) => s.setZoom);
   const setCurrentPage = useDocument((s) => s.setCurrentPage);
+  const setViewerSize = useDocument((s) => s.setViewerSize);
   const containerRef = useRef<HTMLDivElement>(null);
   const [panning, setPanning] = useState<PanState | null>(null);
 
@@ -26,6 +27,17 @@ export function PdfViewer() {
     if (!containerRef.current) return;
     containerRef.current.scrollTop = 0;
   }, [doc?.id]);
+
+  // Report the viewer area size so the store can compute fit-to-width/page.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const report = () => setViewerSize(el.clientWidth, el.clientHeight);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [setViewerSize]);
 
   // Middle-mouse-button drag-to-pan. Works regardless of which tool is
   // selected — same UX as Photoshop / Figma / most pro editors.

@@ -224,6 +224,14 @@ export function AnnotationLayer({
   }>(null);
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const inlineRef = useRef<HTMLTextAreaElement | null>(null);
+  // Highlight box shown when hovering editable text with the edit-text tool,
+  // so the user sees exactly what will be edited before clicking.
+  const [hoverRect, setHoverRect] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
 
   useEffect(() => {
     if (inlineEdit && inlineRef.current) {
@@ -545,24 +553,50 @@ export function AnnotationLayer({
     ],
   );
 
+  /** Bounds (screen-space) of the editable text run under a screen point. */
+  function hoverRunRect(sx: number, sy: number) {
+    const p = screenToPdf(sx, sy, width, height, zoom, rotation);
+    const run = findTextRunAt(p.x, p.y, textItems);
+    if (run.length === 0) return null;
+    const minX = Math.min(...run.map((r) => r.x));
+    const maxX = Math.max(...run.map((r) => r.x + r.width));
+    const minY = Math.min(...run.map((r) => r.y));
+    const maxH = Math.max(...run.map((r) => r.height));
+    return pdfRectToScreen(minX, minY, maxX - minX, maxH);
+  }
+
   const moveInteraction = useCallback(
     (e: React.PointerEvent) => {
-      if (!draft) return;
       const rect = svgRef.current!.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      setDraft((d) =>
-        d
-          ? {
-              start: d.start,
-              end: { x: sx, y: sy },
-              points: d.points ? [...d.points, { x: sx, y: sy }] : undefined,
-            }
-          : null,
-      );
+
+      if (draft) {
+        setDraft((d) =>
+          d
+            ? {
+                start: d.start,
+                end: { x: sx, y: sy },
+                points: d.points ? [...d.points, { x: sx, y: sy }] : undefined,
+              }
+            : null,
+        );
+        return;
+      }
+
+      // Hover preview for the text editor.
+      if (tool.active === 'edit-text' && !inlineEdit) {
+        setHoverRect(hoverRunRect(sx, sy));
+      } else if (hoverRect) {
+        setHoverRect(null);
+      }
     },
-    [draft],
+    [draft, tool.active, inlineEdit, hoverRect, textItems, width, height, zoom, rotation],
   );
+
+  const leaveInteraction = useCallback(() => {
+    if (hoverRect) setHoverRect(null);
+  }, [hoverRect]);
 
   const endInteraction = useCallback(() => {
     if (!draft) return;
@@ -702,7 +736,23 @@ export function AnnotationLayer({
       onPointerMove={moveInteraction}
       onPointerUp={endInteraction}
       onPointerCancel={endInteraction}
+      onPointerLeave={leaveInteraction}
     >
+      {/* Hover highlight: shows the editable text run under the cursor. */}
+      {hoverRect && tool.active === 'edit-text' && !inlineEdit && (
+        <rect
+          x={hoverRect.x - 2}
+          y={hoverRect.y - 2}
+          width={hoverRect.w + 4}
+          height={hoverRect.h + 4}
+          fill="#FF9900"
+          fillOpacity={0.12}
+          stroke="#FF9900"
+          strokeWidth={1.5}
+          rx={2}
+          pointerEvents="none"
+        />
+      )}
       {annotations.map((a) => {
         const s = pdfToScreen(a);
         const selected = a.id === selectedId;

@@ -1,7 +1,7 @@
 {
   "name": "editor-pdf",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Editor de PDF profesional multiplataforma - alternativa libre a Adobe Acrobat",
   "author": "Marco",
   "main": "dist-electron/main.js",

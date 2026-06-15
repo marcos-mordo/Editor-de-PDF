@@ -20,6 +20,8 @@ import { showEncryptDialog } from './features/security/EncryptDialog';
 import { showStampsDialog } from './features/stamps/StampsDialog';
 import { showHeaderFooterDialog } from './features/layout/HeaderFooterDialog';
 import { showInsertBlankDialog } from './features/pages/InsertBlankDialog';
+import { showCropDialog } from './features/pages/CropDialog';
+import { showPropertiesDialog } from './features/document/PropertiesDialog';
 import { printDocument } from './features/print/print';
 import { FindPanel, useSearch } from './features/find/FindPanel';
 import { exportToImages } from './features/convert/exportImages';
@@ -34,6 +36,8 @@ export default function App() {
   const zoomIn = useDocument((s) => s.zoomIn);
   const zoomOut = useDocument((s) => s.zoomOut);
   const zoomFit = useDocument((s) => s.zoomFit);
+  const fitWidth = useDocument((s) => s.fitWidth);
+  const fitPage = useDocument((s) => s.fitPage);
 
   const [version, setVersion] = useState<string>('');
 
@@ -160,11 +164,15 @@ export default function App() {
       window.api.onMenuEvent('menu:header-footer', () => showHeaderFooterDialog()),
       window.api.onMenuEvent('menu:remove-watermark', () => showRemoveWatermarkDialog()),
       window.api.onMenuEvent('menu:insert-blank', () => showInsertBlankDialog()),
+      window.api.onMenuEvent('menu:crop', () => showCropDialog()),
+      window.api.onMenuEvent('menu:properties', () => showPropertiesDialog()),
       window.api.onMenuEvent('menu:print', () => printDocument()),
       window.api.onMenuEvent('menu:find', () => useSearch.getState().setOpen(true)),
+      window.api.onMenuEvent('menu:fit-width', () => fitWidth()),
+      window.api.onMenuEvent('menu:fit-page', () => fitPage()),
     ];
     return () => offs.forEach((off) => off?.());
-  }, [doc, loadFromBytes, zoomIn, zoomOut, zoomFit, version]);
+  }, [doc, loadFromBytes, zoomIn, zoomOut, zoomFit, fitWidth, fitPage, version]);
 
   return (
     <div className="flex h-full flex-col bg-page-alt text-ink">

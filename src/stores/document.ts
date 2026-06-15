@@ -6,6 +6,8 @@ import { generateId, toArrayBuffer } from '../lib/utils';
 import { editTextInPage } from '../features/textedit/engine';
 import { pickStandardFont } from '../features/textedit/font-match';
 
+export type WorkingPdfMutator = (pdf: PDFDocument) => void | Promise<void>;
+
 export interface PdfDoc {
   id: string;
   name: string;
@@ -26,6 +28,11 @@ interface DocumentState {
   currentPage: number;
   zoom: number;
   loading: boolean;
+  /** Size of the scrollable viewer area in CSS px (set by PdfViewer). */
+  viewerSize: { w: number; h: number };
+  setViewerSize: (w: number, h: number) => void;
+  fitWidth: () => Promise<void>;
+  fitPage: () => Promise<void>;
   loadFromBytes: (
     bytes: ArrayBuffer,
     name: string,
@@ -56,6 +63,11 @@ interface DocumentState {
     newText: string,
     pos: { x: number; y: number; size: number; fontFamily: string },
   ) => Promise<boolean>;
+  /**
+   * Loads the working PDF, lets a callback mutate it (crop, metadata, etc.),
+   * saves and re-renders — WITHOUT resetting the user's page order/rotations.
+   */
+  applyToWorkingPdf: (mutator: WorkingPdfMutator) => Promise<boolean>;
 }
 
 export const useDocument = create<DocumentState>((set, get) => ({
@@ -63,6 +75,33 @@ export const useDocument = create<DocumentState>((set, get) => ({
   currentPage: 1,
   zoom: 1.5,
   loading: false,
+  viewerSize: { w: 0, h: 0 },
+
+  setViewerSize: (w, h) => set({ viewerSize: { w, h } }),
+
+  fitWidth: async () => {
+    const { doc, currentPage, viewerSize } = get();
+    if (!doc || viewerSize.w <= 0) return;
+    const origPage = doc.pagesOrder[currentPage - 1] ?? doc.pagesOrder[0];
+    const page = await doc.proxy.getPage(origPage);
+    const rot = doc.pageRotations[origPage] ?? 0;
+    const vp = page.getViewport({ scale: 1, rotation: rot });
+    const padding = 48; // matches viewer px-4 + scrollbar
+    const z = (viewerSize.w - padding) / vp.width;
+    set({ zoom: Math.max(0.25, Math.min(5, z)) });
+  },
+
+  fitPage: async () => {
+    const { doc, currentPage, viewerSize } = get();
+    if (!doc || viewerSize.w <= 0 || viewerSize.h <= 0) return;
+    const origPage = doc.pagesOrder[currentPage - 1] ?? doc.pagesOrder[0];
+    const page = await doc.proxy.getPage(origPage);
+    const rot = doc.pageRotations[origPage] ?? 0;
+    const vp = page.getViewport({ scale: 1, rotation: rot });
+    const zW = (viewerSize.w - 48) / vp.width;
+    const zH = (viewerSize.h - 60) / vp.height;
+    set({ zoom: Math.max(0.25, Math.min(5, Math.min(zW, zH))) });
+  },
 
   loadFromBytes: async (bytes, name, filePath) => {
     set({ loading: true });
@@ -266,6 +305,24 @@ export const useDocument = create<DocumentState>((set, get) => ({
       return true;
     } catch (e) {
       console.error('applyTextEdit failed', e);
+      return false;
+    }
+  },
+
+  applyToWorkingPdf: async (mutator) => {
+    const { doc } = get();
+    if (!doc) return false;
+    try {
+      const pdfDoc = await PDFDocument.load(doc.workingBytes.slice(0), {
+        ignoreEncryption: true,
+      });
+      await mutator(pdfDoc);
+      const saved = await pdfDoc.save();
+      const ab = toArrayBuffer(saved);
+      await get().reloadProxy(ab);
+      return true;
+    } catch (e) {
+      console.error('applyToWorkingPdf failed', e);
       return false;
     }
   },

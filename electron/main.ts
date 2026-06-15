@@ -216,6 +216,15 @@ function buildMenu(): void {
           label: 'Insertar página en blanco...',
           click: () => mainWindow?.webContents.send('menu:insert-blank'),
         },
+        {
+          label: 'Recortar páginas...',
+          click: () => mainWindow?.webContents.send('menu:crop'),
+        },
+        { type: 'separator' },
+        {
+          label: 'Propiedades del documento...',
+          click: () => mainWindow?.webContents.send('menu:properties'),
+        },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -265,9 +274,19 @@ function buildMenu(): void {
           click: () => mainWindow?.webContents.send('menu:zoom-out'),
         },
         {
-          label: 'Ajustar al ancho',
+          label: 'Tamaño real (100%)',
           accelerator: 'CmdOrCtrl+0',
           click: () => mainWindow?.webContents.send('menu:zoom-fit'),
+        },
+        {
+          label: 'Ajustar al ancho',
+          accelerator: 'CmdOrCtrl+1',
+          click: () => mainWindow?.webContents.send('menu:fit-width'),
+        },
+        {
+          label: 'Ajustar a la página',
+          accelerator: 'CmdOrCtrl+2',
+          click: () => mainWindow?.webContents.send('menu:fit-page'),
         },
         { type: 'separator' },
         { role: 'togglefullscreen' },

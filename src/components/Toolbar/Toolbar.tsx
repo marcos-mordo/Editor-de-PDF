@@ -24,11 +24,16 @@ import {
   ChevronDown,
   Undo2,
   Redo2,
+  MoveHorizontal,
+  Scan,
+  Crop,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDocument } from '../../stores/document';
 import { useTools } from '../../stores/tools';
 import { useHistory, undo, redo, pushHistory } from '../../stores/history';
+import { showCropDialog } from '../../features/pages/CropDialog';
+import { showPropertiesDialog } from '../../features/document/PropertiesDialog';
 import { savePdfWithEdits } from '../../features/save/save';
 import { showMergeDialog } from '../../features/pages/MergeDialog';
 import { showSplitDialog } from '../../features/pages/SplitDialog';
@@ -44,10 +49,11 @@ export function Toolbar({ onAbout }: { onAbout: () => void }) {
   const doc = useDocument((s) => s.doc);
   const currentPage = useDocument((s) => s.currentPage);
   const zoom = useDocument((s) => s.zoom);
-  const setZoom = useDocument((s) => s.setZoom);
   const zoomIn = useDocument((s) => s.zoomIn);
   const zoomOut = useDocument((s) => s.zoomOut);
   const zoomFit = useDocument((s) => s.zoomFit);
+  const fitWidth = useDocument((s) => s.fitWidth);
+  const fitPage = useDocument((s) => s.fitPage);
   const setCurrentPage = useDocument((s) => s.setCurrentPage);
   const rotateAll = useDocument((s) => s.rotateAll);
   const loadFromBytes = useDocument((s) => s.loadFromBytes);
@@ -193,6 +199,15 @@ export function Toolbar({ onAbout }: { onAbout: () => void }) {
           <Scissors size={16} />
           <span>Dividir</span>
         </button>
+        <button
+          className="btn-nav"
+          onClick={() => showCropDialog()}
+          disabled={!doc}
+          title="Recortar páginas"
+        >
+          <Crop size={16} />
+          <span>Recortar</span>
+        </button>
 
         <div className="h-7 w-px bg-amazon-nav-hover mx-1" />
 
@@ -312,26 +327,30 @@ export function Toolbar({ onAbout }: { onAbout: () => void }) {
               <button className="tool-btn-nav" onClick={zoomOut} title="Alejar">
                 <ZoomOut size={18} />
               </button>
-              <select
-                className="rounded border border-amazon-nav-hover bg-amazon-nav-light px-1 py-0.5 text-sm text-white"
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-              >
-                <option value={0.5}>50%</option>
-                <option value={0.75}>75%</option>
-                <option value={1}>100%</option>
-                <option value={1.25}>125%</option>
-                <option value={1.5}>150%</option>
-                <option value={2}>200%</option>
-                <option value={3}>300%</option>
-              </select>
+              <div className="min-w-[3rem] text-center text-sm tabular-nums text-white">
+                {Math.round(zoom * 100)}%
+              </div>
               <button className="tool-btn-nav" onClick={zoomIn} title="Acercar">
                 <ZoomIn size={18} />
               </button>
               <button
                 className="tool-btn-nav"
+                onClick={fitWidth}
+                title="Ajustar al ancho (Ctrl+1)"
+              >
+                <MoveHorizontal size={18} />
+              </button>
+              <button
+                className="tool-btn-nav"
+                onClick={fitPage}
+                title="Ajustar a la página (Ctrl+2)"
+              >
+                <Scan size={18} />
+              </button>
+              <button
+                className="tool-btn-nav"
                 onClick={zoomFit}
-                title="Restablecer (100%)"
+                title="Tamaño real 100% (Ctrl+0)"
               >
                 <Maximize size={18} />
               </button>
