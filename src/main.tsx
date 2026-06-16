@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { Toaster } from 'react-hot-toast';
 import App from './App';
 import './styles.css';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useDocument } from './stores/document';
 import { useTools } from './stores/tools';
 import { useAnnotations } from './stores/annotations';
@@ -22,7 +23,9 @@ import { pdfjsLib } from './lib/pdfjs';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
     <Toaster
       position="bottom-right"
       toastOptions={{

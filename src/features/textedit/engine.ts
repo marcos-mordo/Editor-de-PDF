@@ -185,7 +185,8 @@ export async function editTextInPage(
   newText: string,
   near?: { x: number; y: number },
 ): Promise<EditResult> {
-  if (!oldText) return { success: false };
+  // Nothing to do for an empty source or a no-op edit.
+  if (!oldText || oldText === newText) return { success: false };
 
   const ctx = doc.context;
   const page = doc.getPage(pageIndex);

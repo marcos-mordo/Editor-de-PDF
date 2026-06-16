@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, AlertTriangle, Lock } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, Lock } from 'lucide-react';
 import { openModal, type ModalApi } from '../../components/Modal/modal';
 import { useDocument } from '../../stores/document';
-import { stripPdfExt } from '../../lib/utils';
+import { stripPdfExt, toArrayBuffer } from '../../lib/utils';
+import { savePdfWithEdits } from '../save/save';
+import { encryptPdf } from './pdf-encrypt';
 
 function EncryptView({ api }: { api: ModalApi }) {
   const doc = useDocument((s) => s.doc);
   const [userPassword, setUserPassword] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [permissions, setPermissions] = useState({
     printing: true,
@@ -25,8 +28,8 @@ function EncryptView({ api }: { api: ModalApi }) {
 
   async function apply() {
     if (!doc) return;
-    if (!userPassword) {
-      toast.error('Define una contraseña');
+    if (userPassword.length < 4) {
+      toast.error('La contraseña debe tener al menos 4 caracteres');
       return;
     }
     if (userPassword !== confirmPwd) {
@@ -34,36 +37,30 @@ function EncryptView({ api }: { api: ModalApi }) {
       return;
     }
     setBusy(true);
+    const tt = toast.loading('Cifrando con AES-128…');
     try {
-      // pdf-lib does not natively implement PDF encryption. We emit the PDF
-      // and notify the user. For a real production-grade encryption flow we
-      // would need to integrate qpdf via a bundled binary or use a WebAssembly
-      // PDF encrypter. For now, we apply password metadata via /P /U /O placeholders
-      // through a post-process; this implementation produces a regular PDF and
-      // documents the limitation, but applies a basic "owner password" comment.
-      const source = await PDFDocument.load(doc.workingBytes.slice(0), {
-        ignoreEncryption: true,
+      // Build the final edited PDF (annotations/edits flattened), then encrypt.
+      const editedBytes = await savePdfWithEdits();
+      const pdfDoc = await PDFDocument.load(editedBytes, { ignoreEncryption: true });
+      await encryptPdf(pdfDoc, {
+        userPassword,
+        ownerPassword: ownerPassword || userPassword,
+        permissions,
       });
-      // Mark in metadata
-      source.setKeywords([`protected:${userPassword.length}-chars`]);
-      const bytes = await source.save();
-      const ab = bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength,
-      ) as ArrayBuffer;
+      // useObjectStreams:false → every object is a plain, encrypted indirect object.
+      const out = await pdfDoc.save({ useObjectStreams: false });
+      const ab = toArrayBuffer(out);
       const name = `${stripPdfExt(doc.name)}_protegido.pdf`;
       const saved = await window.api.savePdf(name, ab);
+      toast.dismiss(tt);
       if (saved) {
-        toast.success('Guardado con metadatos de protección', { duration: 5000 });
-        toast(
-          'Aviso: la encriptación AES completa de PDF requiere una build con módulo nativo. Tu archivo está marcado y guardado.',
-          { duration: 8000, icon: '⚠️' },
-        );
+        toast.success('PDF cifrado y guardado', { duration: 4000 });
         api.close();
       }
     } catch (e: any) {
+      toast.dismiss(tt);
       console.error(e);
-      toast.error('Error: ' + (e?.message ?? 'desconocido'));
+      toast.error('Error al cifrar: ' + (e?.message ?? 'desconocido'));
     } finally {
       setBusy(false);
     }
@@ -71,24 +68,27 @@ function EncryptView({ api }: { api: ModalApi }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded border border-amazon-orange/40 bg-amazon-yellow/10 p-3 text-sm text-amazon-orange-hover">
-        <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
+      <div className="flex items-start gap-2 rounded border border-green-600/30 bg-green-50 p-3 text-sm text-green-800">
+        <ShieldCheck size={18} className="mt-0.5 flex-shrink-0" />
         <div>
-          <strong>Aviso:</strong> esta versión guarda el PDF marcando los metadatos
-          de protección. La encriptación AES-256 nativa completa de PDF se añadirá
-          en una próxima actualización (requiere módulo qpdf o WASM).
+          <strong>Cifrado AES-128 real.</strong> El PDF se protege con el estándar
+          de seguridad de PDF (mismo que Adobe Acrobat). Pedirá la contraseña para
+          abrirse en cualquier lector. Guárdala bien: sin ella no podrás recuperar
+          el documento.
         </div>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-ink-secondary">Contraseña</label>
+        <label className="mb-1 block text-xs text-ink-secondary">
+          Contraseña de apertura
+        </label>
         <div className="relative">
           <input
             type={showPwd ? 'text' : 'password'}
             className="input pr-10"
             value={userPassword}
             onChange={(e) => setUserPassword(e.target.value)}
-            placeholder="Mínimo 6 caracteres"
+            placeholder="Mínimo 4 caracteres"
           />
           <button
             type="button"
@@ -100,7 +100,9 @@ function EncryptView({ api }: { api: ModalApi }) {
         </div>
       </div>
       <div>
-        <label className="mb-1 block text-xs text-ink-secondary">Confirmar contraseña</label>
+        <label className="mb-1 block text-xs text-ink-secondary">
+          Confirmar contraseña
+        </label>
         <input
           type={showPwd ? 'text' : 'password'}
           className="input"
@@ -108,9 +110,23 @@ function EncryptView({ api }: { api: ModalApi }) {
           onChange={(e) => setConfirmPwd(e.target.value)}
         />
       </div>
+      <div>
+        <label className="mb-1 block text-xs text-ink-secondary">
+          Contraseña de propietario (opcional)
+        </label>
+        <input
+          type={showPwd ? 'text' : 'password'}
+          className="input"
+          value={ownerPassword}
+          onChange={(e) => setOwnerPassword(e.target.value)}
+          placeholder="Para cambiar permisos sin la contraseña de apertura"
+        />
+      </div>
 
       <div>
-        <label className="mb-2 block text-xs text-ink-secondary">Permisos</label>
+        <label className="mb-2 block text-xs text-ink-secondary">
+          Permisos (requieren la contraseña de propietario para cambiarse)
+        </label>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {(
             [
@@ -135,12 +151,12 @@ function EncryptView({ api }: { api: ModalApi }) {
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <button className="btn-ghost" onClick={api.close} disabled={busy}>
+        <button className="btn-secondary" onClick={api.close} disabled={busy}>
           Cancelar
         </button>
         <button className="btn-primary" onClick={apply} disabled={busy}>
           <Lock size={16} />
-          {busy ? 'Procesando…' : 'Proteger y guardar'}
+          {busy ? 'Cifrando…' : 'Cifrar y guardar'}
         </button>
       </div>
     </div>
