@@ -14,6 +14,7 @@ import {
   PenLine,
   TextCursorInput,
   Eraser,
+  SquareSlash,
 } from 'lucide-react';
 import { useTools, type ToolId } from '../../stores/tools';
 import { cn } from '../../lib/utils';
@@ -40,6 +41,7 @@ const TOOLS: ToolDef[] = [
   { id: 'edit-text', icon: <TextCursorInput size={17} />, label: 'Editor de texto (click sobre cualquier palabra del PDF para editarla)', group: 'content' },
   { id: 'text', icon: <Type size={17} />, label: 'Añadir texto nuevo', group: 'content' },
   { id: 'eraser', icon: <Eraser size={17} />, label: 'Borrador (cubrir con blanco)', group: 'content' },
+  { id: 'redact', icon: <SquareSlash size={17} />, label: 'Redactar (elimina el texto de verdad + caja negra)', group: 'content' },
   { id: 'note', icon: <StickyNote size={17} />, label: 'Nota', group: 'content' },
   { id: 'insert-image', icon: <ImageIcon size={17} />, label: 'Insertar imagen', group: 'content' },
   { id: 'signature-pad', icon: <PenLine size={17} />, label: 'Firma', group: 'content' },

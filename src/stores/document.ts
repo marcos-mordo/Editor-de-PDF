@@ -70,6 +70,55 @@ interface DocumentState {
   applyToWorkingPdf: (mutator: WorkingPdfMutator) => Promise<boolean>;
 }
 
+/**
+ * Detects whether the bytes are an encrypted PDF and, if so, prompts the user
+ * for the password (retrying on mistakes) and returns the decrypted bytes.
+ * Returns the original bytes when not encrypted, or null when the user cancels.
+ */
+async function maybeDecryptOnOpen(
+  bytes: ArrayBuffer,
+): Promise<ArrayBuffer | null> {
+  try {
+    const { decryptPdf } = await import('../features/security/pdf-decrypt');
+    const u8 = new Uint8Array(bytes);
+    // Try with an empty password first (covers unencrypted + empty-password docs).
+    let res = await decryptPdf(u8, '');
+    if (!res.encrypted) return bytes;
+    if (res.ok && res.bytes) return toArrayBuffer(res.bytes);
+
+    const { showPrompt } = await import('../components/Modal/prompt');
+    const toast = (await import('react-hot-toast')).default;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const pw = await showPrompt({
+        title: '🔒 PDF protegido',
+        message:
+          attempt === 0
+            ? 'Este documento está cifrado. Introduce la contraseña para abrirlo.'
+            : 'Contraseña incorrecta. Inténtalo de nuevo.',
+        placeholder: 'Contraseña',
+        password: true,
+        okLabel: 'Abrir',
+      });
+      if (pw === null) return null; // cancelled
+      res = await decryptPdf(u8, pw);
+      if (res.ok && res.bytes) {
+        toast.success('PDF desbloqueado');
+        return toArrayBuffer(res.bytes);
+      }
+      if (res.reason && !res.needsPassword) {
+        toast.error(res.reason);
+        return null;
+      }
+    }
+    toast.error('Demasiados intentos. Cancelado.');
+    return null;
+  } catch (e) {
+    console.error('decrypt-on-open failed', e);
+    // Fall through and let the normal load attempt proceed.
+    return bytes;
+  }
+}
+
 export const useDocument = create<DocumentState>((set, get) => ({
   doc: null,
   currentPage: 1,
@@ -106,6 +155,16 @@ export const useDocument = create<DocumentState>((set, get) => ({
   loadFromBytes: async (bytes, name, filePath) => {
     set({ loading: true });
     try {
+      // If the PDF is password-protected, prompt and decrypt before loading so
+      // it can be both viewed AND edited as a normal document.
+      const ready = await maybeDecryptOnOpen(bytes);
+      if (ready === null) {
+        // User cancelled the password prompt.
+        set({ loading: false });
+        return;
+      }
+      bytes = ready;
+
       // Clone so pdf.js doesn't detach our buffer
       const clone = bytes.slice(0);
       const proxy = await pdfjsLib.getDocument({ data: clone }).promise;

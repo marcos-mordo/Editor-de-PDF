@@ -693,6 +693,23 @@ export function AnnotationLayer({
           strokeWidth: 0,
         });
       }
+    } else if (tool.active === 'redact') {
+      // True redaction: black box that also DELETES the underlying text from
+      // the content stream when saved (see save.ts).
+      if (w >= 2 && h >= 2) {
+        pushHistory();
+        addAnnotation({
+          type: 'redact',
+          pageNumber,
+          x,
+          y,
+          width: w,
+          height: h,
+          color: '#000000',
+          opacity: 1,
+          strokeWidth: 0,
+        });
+      }
     }
     setDraft(null);
   }, [draft, tool, width, height, zoom, rotation, pageNumber, addAnnotation]);
@@ -978,6 +995,20 @@ export function AnnotationLayer({
                 style={{ cursor: 'pointer' }}
               />
             );
+          case 'redact':
+            return (
+              <rect
+                key={a.id}
+                x={s.x}
+                y={s.y}
+                width={s.w}
+                height={s.h}
+                fill="#000000"
+                opacity={1}
+                onClick={onClick}
+                style={{ cursor: 'pointer' }}
+              />
+            );
           case 'text-replace': {
             // Visual preview while viewing — the saved PDF will either
             // (a) modify the content stream directly (no cover) or
@@ -1081,6 +1112,16 @@ export function AnnotationLayer({
               stroke="#FF9900"
               strokeWidth={1.5}
               strokeDasharray="4 4"
+            />
+          )}
+          {tool.active === 'redact' && (
+            <rect
+              x={Math.min(draft.start.x, draft.end.x)}
+              y={Math.min(draft.start.y, draft.end.y)}
+              width={Math.abs(draft.end.x - draft.start.x)}
+              height={Math.abs(draft.end.y - draft.start.y)}
+              fill="#000000"
+              fillOpacity={0.75}
             />
           )}
           {tool.active === 'circle' && (

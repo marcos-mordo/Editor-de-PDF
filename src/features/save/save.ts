@@ -11,6 +11,7 @@ import { useDocument } from '../../stores/document';
 import { useAnnotations, type Annotation } from '../../stores/annotations';
 import { editTextInPage } from '../textedit/engine';
 import { pickStandardFont } from '../textedit/font-match';
+import { removeTextInRects } from '../textedit/redact';
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '');
@@ -111,6 +112,23 @@ export async function savePdfWithEdits(opts?: {
       } catch (e) {
         console.warn('text edit failed, using fallback cover', e);
         trPlans.set(ann.id, { kind: 'fallback' });
+      }
+    }
+  }
+
+  // Redaction pass: for each page, DELETE the text under every redaction
+  // rectangle from the content stream (true redaction, not just a cover).
+  for (let i = 0; i < doc.pagesOrder.length; i++) {
+    const origPage = doc.pagesOrder[i];
+    const annotations = annStore.byPage[origPage] ?? [];
+    const redactRects = annotations
+      .filter((a) => a.type === 'redact')
+      .map((a) => ({ x: a.x, y: a.y, width: a.width, height: a.height }));
+    if (redactRects.length > 0) {
+      try {
+        removeTextInRects(out, i, redactRects);
+      } catch (e) {
+        console.warn('redact removeTextInRects failed', e);
       }
     }
   }
@@ -302,6 +320,20 @@ async function drawAnnotation(
         font,
         color,
         opacity,
+      });
+      break;
+    }
+    case 'redact': {
+      // The underlying text was already removed from the content stream in the
+      // redaction pass. Paint an opaque black box so the area is also covered.
+      page.drawRectangle({
+        x: ann.x,
+        y: ann.y,
+        width: ann.width,
+        height: ann.height,
+        color: rgb(0, 0, 0),
+        opacity: 1,
+        borderWidth: 0,
       });
       break;
     }

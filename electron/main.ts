@@ -326,6 +326,10 @@ function buildMenu(): void {
           label: 'Reducir tamaño del PDF...',
           click: () => mainWindow?.webContents.send('menu:compress'),
         },
+        {
+          label: 'Comparar con otro PDF...',
+          click: () => mainWindow?.webContents.send('menu:compare'),
+        },
         { type: 'separator' },
         {
           label: 'Exportar a imágenes',

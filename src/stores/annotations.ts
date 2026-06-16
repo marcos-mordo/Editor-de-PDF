@@ -13,7 +13,8 @@ export type AnnotationType =
   | 'note'
   | 'image'
   | 'signature'
-  | 'text-replace';
+  | 'text-replace'
+  | 'redact';
 
 export interface Point {
   x: number;

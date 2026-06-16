@@ -9,6 +9,8 @@ interface PromptOptions {
   okLabel?: string;
   cancelLabel?: string;
   multiline?: boolean;
+  /** Mask the input (for passwords). Ignored when multiline. */
+  password?: boolean;
   width?: string;
 }
 
@@ -101,7 +103,7 @@ function PromptForm({
       ) : (
         <input
           ref={inputRef as React.RefObject<HTMLInputElement>}
-          type="text"
+          type={opts.password ? 'password' : 'text'}
           className="input"
           value={value}
           onChange={(e) => setValue(e.target.value)}

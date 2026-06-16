@@ -16,6 +16,8 @@ const TYPE_LABEL: Record<string, string> = {
   note: 'Nota',
   image: 'Imagen',
   signature: 'Firma',
+  'text-replace': 'Texto editado',
+  redact: 'Redacción',
 };
 
 export function AnnotationsPanel() {

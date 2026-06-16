@@ -23,6 +23,7 @@ import { showInsertBlankDialog } from './features/pages/InsertBlankDialog';
 import { showCropDialog } from './features/pages/CropDialog';
 import { showPropertiesDialog } from './features/document/PropertiesDialog';
 import { showCompressDialog } from './features/convert/CompressDialog';
+import { showCompareDialog } from './features/compare/CompareDialog';
 import { showSettingsDialog } from './features/settings/SettingsDialog';
 import { showShortcutsDialog } from './features/settings/ShortcutsDialog';
 import { useSettings } from './stores/settings';
@@ -175,6 +176,7 @@ export default function App() {
       window.api.onMenuEvent('menu:fit-width', () => fitWidth()),
       window.api.onMenuEvent('menu:fit-page', () => fitPage()),
       window.api.onMenuEvent('menu:compress', () => showCompressDialog()),
+      window.api.onMenuEvent('menu:compare', () => showCompareDialog()),
       window.api.onMenuEvent('menu:settings', () => showSettingsDialog()),
       window.api.onMenuEvent('menu:shortcuts', () => showShortcutsDialog()),
     ];
