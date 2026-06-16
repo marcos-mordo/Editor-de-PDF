@@ -16,7 +16,10 @@ export type ToolId =
   | 'signature'
   | 'eraser'
   | 'edit-text'
-  | 'redact';
+  | 'redact'
+  | 'form-text'
+  | 'form-check'
+  | 'form-dropdown';
 
 interface ToolsState {
   active: ToolId;

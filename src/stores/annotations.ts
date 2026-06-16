@@ -14,7 +14,8 @@ export type AnnotationType =
   | 'image'
   | 'signature'
   | 'text-replace'
-  | 'redact';
+  | 'redact'
+  | 'form-field';
 
 export interface Point {
   x: number;
@@ -45,6 +46,10 @@ export interface Annotation {
   oldText?: string;
   /** Background colour sampled around the original text (used for fallback cover). */
   backgroundColor?: string;
+  /** For form-field annotations. */
+  fieldType?: 'text' | 'checkbox' | 'dropdown';
+  fieldName?: string;
+  fieldOptions?: string[];
 }
 
 interface AnnotationsState {

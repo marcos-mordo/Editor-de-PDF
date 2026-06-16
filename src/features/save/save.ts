@@ -12,6 +12,7 @@ import { useAnnotations, type Annotation } from '../../stores/annotations';
 import { editTextInPage } from '../textedit/engine';
 import { pickStandardFont } from '../textedit/font-match';
 import { removeTextInRects } from '../textedit/redact';
+import { applyFormFields, type FormFieldDef } from '../forms/form-fields';
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '');
@@ -165,6 +166,32 @@ export async function savePdfWithEdits(opts?: {
         continue;
       }
       await drawAnnotation(out, page, ann, getFont);
+    }
+  }
+
+  // Create real interactive AcroForm fields from form-field annotations.
+  const formFieldDefs: FormFieldDef[] = [];
+  for (let i = 0; i < doc.pagesOrder.length; i++) {
+    const annotations = annStore.byPage[doc.pagesOrder[i]] ?? [];
+    for (const ann of annotations) {
+      if (ann.type !== 'form-field' || !ann.fieldType || !ann.fieldName) continue;
+      formFieldDefs.push({
+        type: ann.fieldType,
+        name: ann.fieldName,
+        pageIndex: i,
+        x: ann.x,
+        y: ann.y,
+        width: ann.width,
+        height: ann.height,
+        options: ann.fieldOptions,
+      });
+    }
+  }
+  if (formFieldDefs.length > 0) {
+    try {
+      await applyFormFields(out, formFieldDefs);
+    } catch (e) {
+      console.warn('form field creation failed', e);
     }
   }
 

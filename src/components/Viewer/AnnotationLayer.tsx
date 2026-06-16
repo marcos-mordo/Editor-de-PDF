@@ -710,6 +710,64 @@ export function AnnotationLayer({
           strokeWidth: 0,
         });
       }
+    } else if (
+      tool.active === 'form-text' ||
+      tool.active === 'form-check' ||
+      tool.active === 'form-dropdown'
+    ) {
+      if (w >= 6 && h >= 6) {
+        const fieldType =
+          tool.active === 'form-text'
+            ? 'text'
+            : tool.active === 'form-check'
+              ? 'checkbox'
+              : 'dropdown';
+        // Prompt for the field name (and options for dropdowns) asynchronously.
+        showPrompt({
+          title:
+            fieldType === 'text'
+              ? 'Nombre del campo de texto'
+              : fieldType === 'checkbox'
+                ? 'Nombre de la casilla'
+                : 'Nombre del desplegable',
+          placeholder: 'ej. nombre, email…',
+          defaultValue: fieldType,
+        }).then((name) => {
+          if (!name || !name.trim()) return;
+          const finish = (options?: string[]) => {
+            pushHistory();
+            addAnnotation({
+              type: 'form-field',
+              pageNumber,
+              x,
+              y,
+              width: w,
+              height: h,
+              color: '#2563eb',
+              opacity: 1,
+              fieldType,
+              fieldName: name.trim(),
+              fieldOptions: options,
+            });
+          };
+          if (fieldType === 'dropdown') {
+            showPrompt({
+              title: 'Opciones del desplegable',
+              message: 'Sepáralas con comas',
+              defaultValue: 'Opción 1, Opción 2',
+            }).then((opts) => {
+              finish(
+                (opts ?? '')
+                  .split(',')
+                  .map((o) => o.trim())
+                  .filter(Boolean),
+              );
+            });
+          } else {
+            finish();
+          }
+        });
+      }
     }
     setDraft(null);
   }, [draft, tool, width, height, zoom, rotation, pageNumber, addAnnotation]);
@@ -1009,6 +1067,41 @@ export function AnnotationLayer({
                 style={{ cursor: 'pointer' }}
               />
             );
+          case 'form-field': {
+            const label =
+              a.fieldType === 'checkbox'
+                ? '☑'
+                : a.fieldType === 'dropdown'
+                  ? `${a.fieldName ?? 'campo'} ▾`
+                  : a.fieldName ?? 'campo';
+            return (
+              <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
+                <rect
+                  x={s.x}
+                  y={s.y}
+                  width={s.w}
+                  height={s.h}
+                  fill="#2563eb"
+                  fillOpacity={0.08}
+                  stroke="#2563eb"
+                  strokeWidth={selected ? 2 : 1}
+                  strokeDasharray="4 3"
+                  rx={2}
+                />
+                <text
+                  x={s.x + 4}
+                  y={s.y + Math.min(s.h - 4, 14)}
+                  fontSize={11}
+                  fill="#1d4ed8"
+                  fontFamily="sans-serif"
+                  style={{ userSelect: 'none' }}
+                >
+                  {label}
+                </text>
+                <title>Campo de formulario: {a.fieldName}</title>
+              </g>
+            );
+          }
           case 'text-replace': {
             // Visual preview while viewing — the saved PDF will either
             // (a) modify the content stream directly (no cover) or
@@ -1122,6 +1215,21 @@ export function AnnotationLayer({
               height={Math.abs(draft.end.y - draft.start.y)}
               fill="#000000"
               fillOpacity={0.75}
+            />
+          )}
+          {(tool.active === 'form-text' ||
+            tool.active === 'form-check' ||
+            tool.active === 'form-dropdown') && (
+            <rect
+              x={Math.min(draft.start.x, draft.end.x)}
+              y={Math.min(draft.start.y, draft.end.y)}
+              width={Math.abs(draft.end.x - draft.start.x)}
+              height={Math.abs(draft.end.y - draft.start.y)}
+              fill="#2563eb"
+              fillOpacity={0.1}
+              stroke="#2563eb"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
             />
           )}
           {tool.active === 'circle' && (

@@ -15,6 +15,9 @@ import {
   TextCursorInput,
   Eraser,
   SquareSlash,
+  FormInput,
+  CheckSquare,
+  ChevronDownSquare,
 } from 'lucide-react';
 import { useTools, type ToolId } from '../../stores/tools';
 import { cn } from '../../lib/utils';
@@ -25,7 +28,7 @@ interface ToolDef {
   id: ToolId | 'insert-image' | 'signature-pad';
   icon: React.ReactNode;
   label: string;
-  group: 'nav' | 'markup' | 'shapes' | 'content';
+  group: 'nav' | 'markup' | 'shapes' | 'content' | 'forms';
 }
 
 const TOOLS: ToolDef[] = [
@@ -45,6 +48,9 @@ const TOOLS: ToolDef[] = [
   { id: 'note', icon: <StickyNote size={17} />, label: 'Nota', group: 'content' },
   { id: 'insert-image', icon: <ImageIcon size={17} />, label: 'Insertar imagen', group: 'content' },
   { id: 'signature-pad', icon: <PenLine size={17} />, label: 'Firma', group: 'content' },
+  { id: 'form-text', icon: <FormInput size={17} />, label: 'Campo de texto (formulario)', group: 'forms' },
+  { id: 'form-check', icon: <CheckSquare size={17} />, label: 'Casilla de verificación', group: 'forms' },
+  { id: 'form-dropdown', icon: <ChevronDownSquare size={17} />, label: 'Desplegable', group: 'forms' },
 ];
 
 const COLORS = [
@@ -69,6 +75,7 @@ export function ToolPalette() {
     ['Marcas', TOOLS.filter((t) => t.group === 'markup')],
     ['Formas', TOOLS.filter((t) => t.group === 'shapes')],
     ['Contenido', TOOLS.filter((t) => t.group === 'content')],
+    ['Formulario', TOOLS.filter((t) => t.group === 'forms')],
   ];
 
   return (
