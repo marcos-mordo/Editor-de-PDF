@@ -19,7 +19,9 @@ export type ToolId =
   | 'redact'
   | 'form-text'
   | 'form-check'
-  | 'form-dropdown';
+  | 'form-dropdown'
+  | 'measure-distance'
+  | 'measure-area';
 
 interface ToolsState {
   active: ToolId;

@@ -9,6 +9,13 @@ import {
 import { useDocument } from '../../stores/document';
 import { pushHistory } from '../../stores/history';
 import { showPrompt } from '../../components/Modal/prompt';
+import { useMeasure } from '../../stores/measure';
+import {
+  pointDistance,
+  toLength,
+  toArea,
+  formatMeasure,
+} from '../../features/measure/measure';
 
 export interface TextItemData {
   str: string;
@@ -715,13 +722,13 @@ export function AnnotationLayer({
       tool.active === 'form-check' ||
       tool.active === 'form-dropdown'
     ) {
+      const fieldType =
+        tool.active === 'form-text'
+          ? 'text'
+          : tool.active === 'form-check'
+            ? 'checkbox'
+            : 'dropdown';
       if (w >= 6 && h >= 6) {
-        const fieldType =
-          tool.active === 'form-text'
-            ? 'text'
-            : tool.active === 'form-check'
-              ? 'checkbox'
-              : 'dropdown';
         // Prompt for the field name (and options for dropdowns) asynchronously.
         showPrompt({
           title:
@@ -766,6 +773,47 @@ export function AnnotationLayer({
           } else {
             finish();
           }
+        });
+      }
+    } else if (tool.active === 'measure-distance') {
+      const p0 = screenToPdf(start.x, start.y, width, height, zoom, rotation);
+      const p1 = screenToPdf(end.x, end.y, width, height, zoom, rotation);
+      const { unit, scale } = useMeasure.getState();
+      const len = toLength(pointDistance(p0, p1), unit, scale);
+      const minX = Math.min(p0.x, p1.x);
+      const minY = Math.min(p0.y, p1.y);
+      pushHistory();
+      addAnnotation({
+        type: 'measure',
+        measureKind: 'distance',
+        pageNumber,
+        x: minX,
+        y: minY,
+        width: Math.abs(p1.x - p0.x),
+        height: Math.abs(p1.y - p0.y),
+        color: '#007185',
+        opacity: 1,
+        strokeWidth: 1.5,
+        text: formatMeasure(len, unit),
+        points: [p0, p1],
+      });
+    } else if (tool.active === 'measure-area') {
+      if (w >= 4 && h >= 4) {
+        const { unit, scale } = useMeasure.getState();
+        const area = toArea(w * h, unit, scale);
+        pushHistory();
+        addAnnotation({
+          type: 'measure',
+          measureKind: 'area',
+          pageNumber,
+          x,
+          y,
+          width: w,
+          height: h,
+          color: '#007185',
+          opacity: 1,
+          strokeWidth: 1.5,
+          text: formatMeasure(area, unit, true),
         });
       }
     }
@@ -1102,6 +1150,52 @@ export function AnnotationLayer({
               </g>
             );
           }
+          case 'measure': {
+            const labelX = s.x + s.w / 2;
+            const labelY = s.y + s.h / 2;
+            if (a.measureKind === 'distance' && a.points && a.points.length === 2) {
+              const sp0 = pdfRectToScreen(a.points[0].x, a.points[0].y, 0, 0);
+              const sp1 = pdfRectToScreen(a.points[1].x, a.points[1].y, 0, 0);
+              const mx = (sp0.x + sp1.x) / 2;
+              const my = (sp0.y + sp1.y) / 2;
+              return (
+                <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
+                  <line
+                    x1={sp0.x}
+                    y1={sp0.y}
+                    x2={sp1.x}
+                    y2={sp1.y}
+                    stroke={a.color}
+                    strokeWidth={strokeW}
+                  />
+                  <circle cx={sp0.x} cy={sp0.y} r={3} fill={a.color} />
+                  <circle cx={sp1.x} cy={sp1.y} r={3} fill={a.color} />
+                  <rect x={mx - 26} y={my - 18} width={52} height={15} rx={2} fill="#ffffff" stroke={a.color} strokeWidth={0.5} />
+                  <text x={mx} y={my - 7} fontSize={11} fill={a.color} textAnchor="middle">
+                    {a.text}
+                  </text>
+                </g>
+              );
+            }
+            return (
+              <g key={a.id} onClick={onClick} style={{ cursor: 'pointer' }}>
+                <rect
+                  x={s.x}
+                  y={s.y}
+                  width={s.w}
+                  height={s.h}
+                  fill={a.color}
+                  fillOpacity={0.1}
+                  stroke={a.color}
+                  strokeWidth={strokeW}
+                />
+                <rect x={labelX - 30} y={labelY - 8} width={60} height={16} rx={2} fill="#ffffff" stroke={a.color} strokeWidth={0.5} />
+                <text x={labelX} y={labelY + 4} fontSize={11} fill={a.color} textAnchor="middle">
+                  {a.text}
+                </text>
+              </g>
+            );
+          }
           case 'text-replace': {
             // Visual preview while viewing — the saved PDF will either
             // (a) modify the content stream directly (no cover) or
@@ -1230,6 +1324,28 @@ export function AnnotationLayer({
               stroke="#2563eb"
               strokeWidth={1.5}
               strokeDasharray="4 3"
+            />
+          )}
+          {tool.active === 'measure-distance' && (
+            <line
+              x1={draft.start.x}
+              y1={draft.start.y}
+              x2={draft.end.x}
+              y2={draft.end.y}
+              stroke="#007185"
+              strokeWidth={1.5}
+            />
+          )}
+          {tool.active === 'measure-area' && (
+            <rect
+              x={Math.min(draft.start.x, draft.end.x)}
+              y={Math.min(draft.start.y, draft.end.y)}
+              width={Math.abs(draft.end.x - draft.start.x)}
+              height={Math.abs(draft.end.y - draft.start.y)}
+              fill="#007185"
+              fillOpacity={0.1}
+              stroke="#007185"
+              strokeWidth={1.5}
             />
           )}
           {tool.active === 'circle' && (

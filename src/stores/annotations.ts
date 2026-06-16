@@ -15,7 +15,8 @@ export type AnnotationType =
   | 'signature'
   | 'text-replace'
   | 'redact'
-  | 'form-field';
+  | 'form-field'
+  | 'measure';
 
 export interface Point {
   x: number;
@@ -50,6 +51,8 @@ export interface Annotation {
   fieldType?: 'text' | 'checkbox' | 'dropdown';
   fieldName?: string;
   fieldOptions?: string[];
+  /** For measure annotations: kind + formatted label. */
+  measureKind?: 'distance' | 'area';
 }
 
 interface AnnotationsState {

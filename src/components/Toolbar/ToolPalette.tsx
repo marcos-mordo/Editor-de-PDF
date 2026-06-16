@@ -18,7 +18,11 @@ import {
   FormInput,
   CheckSquare,
   ChevronDownSquare,
+  Ruler,
+  Scan as ScanIcon,
 } from 'lucide-react';
+import { useMeasure } from '../../stores/measure';
+import type { MeasureUnit } from '../../features/measure/measure';
 import { useTools, type ToolId } from '../../stores/tools';
 import { cn } from '../../lib/utils';
 import { showInsertImageDialog } from '../../features/edit/InsertImageDialog';
@@ -28,7 +32,7 @@ interface ToolDef {
   id: ToolId | 'insert-image' | 'signature-pad';
   icon: React.ReactNode;
   label: string;
-  group: 'nav' | 'markup' | 'shapes' | 'content' | 'forms';
+  group: 'nav' | 'markup' | 'shapes' | 'content' | 'forms' | 'measure';
 }
 
 const TOOLS: ToolDef[] = [
@@ -51,6 +55,8 @@ const TOOLS: ToolDef[] = [
   { id: 'form-text', icon: <FormInput size={17} />, label: 'Campo de texto (formulario)', group: 'forms' },
   { id: 'form-check', icon: <CheckSquare size={17} />, label: 'Casilla de verificación', group: 'forms' },
   { id: 'form-dropdown', icon: <ChevronDownSquare size={17} />, label: 'Desplegable', group: 'forms' },
+  { id: 'measure-distance', icon: <Ruler size={17} />, label: 'Medir distancia', group: 'measure' },
+  { id: 'measure-area', icon: <ScanIcon size={17} />, label: 'Medir área', group: 'measure' },
 ];
 
 const COLORS = [
@@ -76,7 +82,10 @@ export function ToolPalette() {
     ['Formas', TOOLS.filter((t) => t.group === 'shapes')],
     ['Contenido', TOOLS.filter((t) => t.group === 'content')],
     ['Formulario', TOOLS.filter((t) => t.group === 'forms')],
+    ['Medición', TOOLS.filter((t) => t.group === 'measure')],
   ];
+
+  const measuring = active === 'measure-distance' || active === 'measure-area';
 
   return (
     <div className="flex items-center gap-3 border-b border-page-border bg-amazon-nav-light px-3 py-1.5 text-white">
@@ -175,6 +184,41 @@ export function ToolPalette() {
           />
         </div>
       )}
+
+      {measuring && <MeasureControls />}
+    </div>
+  );
+}
+
+function MeasureControls() {
+  const unit = useMeasure((s) => s.unit);
+  const setUnit = useMeasure((s) => s.setUnit);
+  const scale = useMeasure((s) => s.scale);
+  const setScale = useMeasure((s) => s.setScale);
+  const units: MeasureUnit[] = ['mm', 'cm', 'in', 'pt'];
+  return (
+    <div className="flex items-center gap-2 text-xs text-white/80">
+      <span>Unidad</span>
+      <select
+        value={unit}
+        onChange={(e) => setUnit(e.target.value as MeasureUnit)}
+        className="rounded border border-amazon-nav-hover bg-amazon-nav-light px-1 py-0.5 text-white"
+      >
+        {units.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
+      <span title="1 unidad en pantalla = N reales (planos/mapas)">Escala ×</span>
+      <input
+        type="number"
+        min={0.01}
+        step={0.1}
+        value={scale}
+        onChange={(e) => setScale(Number(e.target.value))}
+        className="w-16 rounded border border-amazon-nav-hover bg-amazon-nav-light px-1 py-0.5 text-center text-white"
+      />
     </div>
   );
 }

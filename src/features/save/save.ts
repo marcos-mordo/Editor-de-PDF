@@ -364,6 +364,54 @@ async function drawAnnotation(
       });
       break;
     }
+    case 'form-field':
+      // Real interactive fields are created separately in applyFormFields.
+      break;
+    case 'measure': {
+      const font = await getFont('Helvetica');
+      let cx = ann.x + ann.width / 2;
+      let cy = ann.y + ann.height / 2;
+      if (ann.measureKind === 'distance' && ann.points && ann.points.length === 2) {
+        page.drawLine({
+          start: ann.points[0],
+          end: ann.points[1],
+          thickness: sw,
+          color,
+        });
+        cx = (ann.points[0].x + ann.points[1].x) / 2;
+        cy = (ann.points[0].y + ann.points[1].y) / 2;
+      } else {
+        page.drawRectangle({
+          x: ann.x,
+          y: ann.y,
+          width: ann.width,
+          height: ann.height,
+          borderColor: color,
+          borderWidth: sw,
+          color: undefined as any,
+        });
+      }
+      if (ann.text) {
+        const size = 9;
+        const tw = font.widthOfTextAtSize(ann.text, size);
+        page.drawRectangle({
+          x: cx - tw / 2 - 2,
+          y: cy - 2,
+          width: tw + 4,
+          height: size + 4,
+          color: rgb(1, 1, 1),
+          opacity: 0.9,
+        });
+        page.drawText(ann.text, {
+          x: cx - tw / 2,
+          y: cy,
+          size,
+          font,
+          color,
+        });
+      }
+      break;
+    }
     case 'text-replace': {
       // Fallback path: only reached when content-stream rewriting didn't
       // match this PDF's encoding. Cover the original area with the sampled
