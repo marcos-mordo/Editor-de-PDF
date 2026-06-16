@@ -1,102 +1,84 @@
 ==============================================
-  EDITOR DE PDF v0.6.0
+  EDITOR DE PDF v0.8.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-(Confirmar version: Menu Ayuda -> Acerca de -> v0.6.0)
+(Confirmar version: Menu Ayuda -> Acerca de -> v0.8.0)
 
 
 ==============================================
- EDITOR DE TEXTO REAL (reescrito de cero)
+ NOVEDADES DE ESTA VERSION
 ==============================================
 
-Esta version cambia POR COMPLETO como funciona la
-edicion de texto. Antes ponia una caja blanca encima
-y escribia por arriba. AHORA edita el PDF de verdad:
+ PROTECCION CON CONTRASENA REAL (AES-128)
+   Antes solo marcaba metadatos. AHORA cifra de verdad
+   con el estandar de seguridad de PDF (el mismo que
+   Adobe Acrobat). El PDF pide la contraseña para
+   abrirse en cualquier lector: Adobe, Chrome, Firefox.
+   Verificado contra el lector de Mozilla (pdf.js).
+   Menu Herramientas -> Proteger con contraseña.
+   * Guarda bien la contraseña: sin ella el documento
+     no se puede recuperar.
 
- 1. Activa la herramienta "Editor de texto"
-    (icono de cursor de texto en la barra de tools).
+ REDUCIR TAMANO DEL PDF
+   Menu Herramientas -> Reducir tamaño del PDF.
+   - Optimizar (sin perdida): mantiene el texto.
+   - Rasterizar: convierte paginas en imagen JPEG con
+     control de calidad/resolucion. Reduce mucho en
+     escaneos. Muestra el % de reduccion.
 
- 2. Haz CLICK sobre cualquier palabra del PDF.
+ RECORTAR PAGINAS (CROP)
+   Menu Archivo / boton Recortar. Arrastra el area a
+   mantener; aplica a la pagina actual o a todas.
 
- 3. La app ANALIZA el documento por dentro:
-      - encuentra el operador de dibujo que pinta ese
-        texto en el content stream
-      - decodifica los glifos usando el mapa de la
-        fuente embebida (ToUnicode), soportando fuentes
-        CID/Type0 de 2 bytes (las de Canva, plantillas
-        de CV, herramientas de diseño) y fuentes
-        simples de 1 byte (Word, navegador...)
-      - detecta su fuente, tamano, color y posicion
-        reales.
+ PROPIEDADES Y PRIVACIDAD
+   Menu Archivo -> Propiedades del documento.
+   Edita titulo/autor/etc. o pulsa "Eliminar todos los
+   metadatos" para limpiar el documento.
 
- 4. Escribe el texto nuevo en el campo que aparece.
-
- 5. Al confirmar (Enter), el editor:
-      - reescribe el texto DIRECTAMENTE en el PDF
-      - NO pone ninguna caja encima
-      - el texto original se ELIMINA del documento
-      - se re-renderiza la pagina real ya editada.
-
-   * Si los caracteres nuevos existen en la fuente
-     embebida (corregir una errata, cambiar un ano,
-     reordenar...) se conserva la fuente EXACTA del
-     original. Indistinguible.
-
-   * Si escribes caracteres que la fuente embebida no
-     incluye (esto pasa con fuentes "subset" de diseno
-     que solo traen las letras usadas), el editor quita
-     el texto original y lo repinta con la fuente
-     estandar mas parecida (mismo peso/estilo), en la
-     MISMA posicion, tamano y color. Sigue SIN poner
-     cajas encima.
-
- 6. Ctrl+Z deshace la edicion (vuelve el texto original).
-
-
-NOTA HONESTA sobre fuentes:
- Un PDF "subset" solo lleva incrustados los glifos que
- ya se usaban. Si una letra nueva no estaba en el
- documento, fisicamente no existe en esa fuente y se
- sustituye por la mas parecida — es la misma limitacion
- que tiene Adobe (avisa "fuente no disponible,
- sustituyendo"). Para correcciones y cambios normales
- se conserva la fuente original.
+ VISTAS Y PREFERENCIAS
+   - Ajustar al ancho (Ctrl+1), a la pagina (Ctrl+2),
+     tamaño real (Ctrl+0).
+   - Preferencias (Ctrl+,): vista al abrir, panel, etc.
+     Se recuerdan entre sesiones.
+   - Atajos de teclado (Ctrl+/): lista completa.
 
 
 ==============================================
- NAVEGACION Y RESTO DE HERRAMIENTAS
+ EDITOR DE TEXTO (la herramienta principal)
 ==============================================
 
- - Click rueda del raton = mano temporal (mover el doc).
- - Ctrl + rueda = zoom.
- - Ctrl+F = buscar y reemplazar.
- - Ctrl+P = imprimir.
- - Ctrl+Z / Ctrl+Y = deshacer / rehacer.
+ Activa "Editor de texto", pasa el raton (se resalta la
+ palabra editable) y haz click. Edita el texto ORIGINAL
+ del PDF respetando fuente, tamaño, color y posicion,
+ SIN poner cajas encima. Soporta fuentes CID/Type0 de
+ Canva y plantillas de CV.
 
- - Anotaciones: resaltado, subrayado, tachado, formas,
-   flechas, dibujo libre, notas, anadir texto nuevo,
-   insertar imagenes, firma manuscrita.
- - Borrador (cubrir con blanco), sellos (APROBADO,
-   CONFIDENCIAL...), encabezados/pies/numeros de pagina,
-   quitar marca de agua.
+
+==============================================
+ TODO LO QUE PUEDES HACER
+==============================================
+
+ - Editar el texto original del PDF
+ - Anotar: resaltar, subrayar, tachar, formas, flechas,
+   dibujo libre, notas, texto nuevo, imagenes, firma
+ - Borrador, sellos (APROBADO, CONFIDENCIAL...),
+   encabezados/pies/numeros de pagina, quitar marca de agua
  - Paginas: reordenar, rotar, eliminar, combinar, dividir,
-   insertar pagina en blanco.
- - OCR (escaneos -> texto), contrasenas, marcas de agua.
- - Exportar a PNG, Word (.docx), Excel (.xlsx).
- - Archivos recientes en la pantalla de inicio.
+   insertar en blanco, recortar
+ - Buscar y reemplazar (Ctrl+F), imprimir (Ctrl+P)
+ - OCR (escaneos -> texto), proteger con contraseña real,
+   marcas de agua, reducir tamaño
+ - Exportar a PNG, Word (.docx), Excel (.xlsx)
+ - Deshacer/rehacer, archivos recientes, preferencias
 
 
 ==============================================
  INSTALACION
 ==============================================
 
-OPCION 1: "Editor de PDF - Instalador.exe"
- - Doble click para instalarlo. Crea acceso directo.
- - Desinstalar: Panel de control -> Programas.
-
-OPCION 2: "Editor de PDF - Portable.exe"
- - Doble click y se ejecuta sin instalar (USB-friendly).
+OPCION 1: "Editor de PDF - Instalador.exe" (doble click)
+OPCION 2: "Editor de PDF - Portable.exe" (sin instalar)
 
 Windows mostrara "SmartScreen" (app sin firma de pago).
 Pulsa "Mas informacion" -> "Ejecutar de todas formas".
@@ -106,21 +88,12 @@ Pulsa "Mas informacion" -> "Ejecutar de todas formas".
  PRIVACIDAD
 ==============================================
 
- - NO se envia nada a internet (salvo idioma OCR la
-   primera vez que lo uses).
- - NO requiere cuenta ni activacion.
- - Tus PDFs nunca salen de tu computadora.
+ Todo se procesa LOCALMENTE en tu PC. Nada se envia a
+ internet (salvo el idioma de OCR la primera vez).
+ Sin cuentas, sin suscripcion, sin telemetria.
 
-
-==============================================
- SI ALGO FALLA
-==============================================
-
-Logs en:  C:\Users\<TU_USUARIO>\.editor-de-pdf\
-Tambien:  Menu Ayuda -> Abrir carpeta de logs
-
-Codigo fuente:
-  https://github.com/marcos-mordo/Editor-de-PDF
+ Codigo fuente:
+   https://github.com/marcos-mordo/Editor-de-PDF
 
 
 Disfruta!
