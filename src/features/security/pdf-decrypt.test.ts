@@ -33,14 +33,14 @@ function contentWithMarker(doc: PDFDocument, marker: string): string | null {
   return null;
 }
 
-async function makeEncrypted(password: string) {
+async function makeEncrypted(password: string, aes256 = false) {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   doc.addPage([300, 120]).drawText('SecretPayload', { x: 20, y: 60, size: 18, font });
   doc.setTitle('My Title');
   const plain = await doc.save();
   const enc = await PDFDocument.load(plain);
-  await encryptPdf(enc, { userPassword: password });
+  await encryptPdf(enc, { userPassword: password, aes256 });
   const encryptedBytes = await enc.save({ useObjectStreams: false });
   return { encryptedBytes, plainTitleHex: '4D79205469746C65' }; // "My Title"
 }
@@ -91,5 +91,35 @@ describe('decryptPdf', () => {
     // The decrypted bytes load cleanly without ignoreEncryption.
     const reopened = await PDFDocument.load(res.bytes!);
     expect(reopened.getPageCount()).toBe(1);
+  });
+
+  describe('AES-256 (V5/R6)', () => {
+    it('declares AESV3/V5/R6 and hides the content', async () => {
+      const { encryptedBytes } = await makeEncrypted('strong-pw', true);
+      const head = bytesToStr(encryptedBytes);
+      expect(head).toContain('/AESV3');
+      expect(head).toContain('/V 5');
+      expect(head).toContain('/R 6');
+      expect(head).toContain('/UE');
+      expect(head).toContain('/Perms');
+      expect(head).not.toContain(MARKER);
+    });
+
+    it('decrypts with the correct password and recovers content + title', async () => {
+      const { encryptedBytes } = await makeEncrypted('strong-pw', true);
+      const res = await decryptPdf(encryptedBytes, 'strong-pw');
+      expect(res.ok).toBe(true);
+      expect(res.encrypted).toBe(true);
+      const decDoc = await PDFDocument.load(res.bytes!);
+      expect(contentWithMarker(decDoc, MARKER)).not.toBeNull();
+      expect(decDoc.getTitle()).toBe('My Title');
+    });
+
+    it('rejects a wrong password', async () => {
+      const { encryptedBytes } = await makeEncrypted('correct', true);
+      const res = await decryptPdf(encryptedBytes, 'nope');
+      expect(res.ok).toBe(false);
+      expect(res.needsPassword).toBe(true);
+    });
   });
 });

@@ -14,6 +14,7 @@ function EncryptView({ api }: { api: ModalApi }) {
   const [confirmPwd, setConfirmPwd] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
+  const [aes256, setAes256] = useState(true);
   const [permissions, setPermissions] = useState({
     printing: true,
     copying: true,
@@ -37,7 +38,7 @@ function EncryptView({ api }: { api: ModalApi }) {
       return;
     }
     setBusy(true);
-    const tt = toast.loading('Cifrando con AES-128…');
+    const tt = toast.loading(`Cifrando con ${aes256 ? 'AES-256' : 'AES-128'}…`);
     try {
       // Build the final edited PDF (annotations/edits flattened), then encrypt.
       const editedBytes = await savePdfWithEdits();
@@ -46,6 +47,7 @@ function EncryptView({ api }: { api: ModalApi }) {
         userPassword,
         ownerPassword: ownerPassword || userPassword,
         permissions,
+        aes256,
       });
       // useObjectStreams:false → every object is a plain, encrypted indirect object.
       const out = await pdfDoc.save({ useObjectStreams: false });
@@ -71,10 +73,48 @@ function EncryptView({ api }: { api: ModalApi }) {
       <div className="flex items-start gap-2 rounded border border-green-600/30 bg-green-50 p-3 text-sm text-green-800">
         <ShieldCheck size={18} className="mt-0.5 flex-shrink-0" />
         <div>
-          <strong>Cifrado AES-128 real.</strong> El PDF se protege con el estándar
-          de seguridad de PDF (mismo que Adobe Acrobat). Pedirá la contraseña para
-          abrirse en cualquier lector. Guárdala bien: sin ella no podrás recuperar
-          el documento.
+          <strong>Cifrado {aes256 ? 'AES-256' : 'AES-128'} real.</strong> El PDF se
+          protege con el estándar de seguridad de PDF (mismo que Adobe Acrobat).
+          Pedirá la contraseña para abrirse en cualquier lector. Guárdala bien: sin
+          ella no podrás recuperar el documento.
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-ink-secondary">
+          Nivel de cifrado
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setAes256(true)}
+            className={
+              'flex-1 rounded border px-3 py-2 text-sm transition-colors ' +
+              (aes256
+                ? 'border-amazon-orange bg-amazon-orange/10 font-medium text-ink'
+                : 'border-page-border text-ink-secondary hover:bg-gray-50')
+            }
+          >
+            AES-256 (PDF 2.0)
+            <span className="block text-[11px] text-ink-secondary">
+              Máxima seguridad — recomendado
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAes256(false)}
+            className={
+              'flex-1 rounded border px-3 py-2 text-sm transition-colors ' +
+              (!aes256
+                ? 'border-amazon-orange bg-amazon-orange/10 font-medium text-ink'
+                : 'border-page-border text-ink-secondary hover:bg-gray-50')
+            }
+          >
+            AES-128 (R4)
+            <span className="block text-[11px] text-ink-secondary">
+              Compatibilidad máxima
+            </span>
+          </button>
         </div>
       </div>
 

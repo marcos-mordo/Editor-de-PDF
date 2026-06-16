@@ -26,6 +26,10 @@ import {
 import { md5, rc4, concat, padPassword } from './crypto-primitives';
 import { aesCbcDecrypt } from './crypto-primitives';
 import { computeKey, computeU, objectKey } from './pdf-encrypt';
+import {
+  fileKeyFromUserPassword,
+  fileKeyFromOwnerPassword,
+} from './crypto-256';
 
 export interface DecryptResult {
   ok: boolean;
@@ -89,8 +93,9 @@ export async function decryptPdf(
 
   if (!O) return { ok: false, encrypted: true, reason: 'Falta /O' };
 
-  // Detect the crypt-filter method (AESV2 vs RC4).
+  // Detect the crypt-filter method (AESV2 / AESV3 vs RC4).
   let useAes = false;
+  let aes256 = false;
   if (V >= 4) {
     const cf = ctx.lookup(encDict.get(PDFName.of('CF')));
     const stmF = encDict.get(PDFName.of('StmF'));
@@ -102,38 +107,50 @@ export async function decryptPdf(
         const cfm = std.get(PDFName.of('CFM'));
         if (cfm instanceof PDFName && cfm.asString().includes('AESV2')) {
           useAes = true;
+        } else if (cfm instanceof PDFName && cfm.asString().includes('AESV3')) {
+          useAes = true;
+          aes256 = true;
         }
       }
     }
   }
 
-  if (V >= 5 || R >= 5) {
-    // AES-256 (R6) uses a different key derivation we don't implement yet.
-    return {
-      ok: false,
-      encrypted: true,
-      reason: 'Cifrado AES-256 (R6) no soportado todavía',
-    };
-  }
-
-  const keyLen = V >= 2 ? Math.floor(lengthBits / 8) : 5;
-
-  // Derive the file key from the supplied password and verify it (Algorithm 6).
-  function deriveKey(pw: string): Uint8Array {
-    // computeKey is fixed at 16 bytes (R3/R4). For R2 (40-bit) trim to 5.
-    const k = computeKey(pw, O!, P, id0);
-    return keyLen === 16 ? k : k.subarray(0, keyLen);
-  }
-
-  const key = deriveKey(password);
-  // Verify: recompute U and compare to stored /U (first 16 bytes for R>=3).
-  const Ustored = asBytes(encDict.get(PDFName.of('U')));
-  if (Ustored && R >= 3) {
-    const Ucalc = computeU(key, id0);
-    const a = Array.from(Ucalc.subarray(0, 16));
-    const b = Array.from(Ustored.subarray(0, 16));
-    if (a.join(',') !== b.join(',')) {
-      return { ok: false, encrypted: true, needsPassword: true, reason: 'Contraseña incorrecta' };
+  let key: Uint8Array;
+  if (V >= 5 || R >= 6 || aes256) {
+    // AES-256 (R6 / AESV3): recover the 32-byte file key from either password.
+    const U = asBytes(encDict.get(PDFName.of('U')));
+    const UE = asBytes(encDict.get(PDFName.of('UE')));
+    const OE = asBytes(encDict.get(PDFName.of('OE')));
+    if (!U || !UE) {
+      return { ok: false, encrypted: true, reason: 'Faltan /U o /UE (R6)' };
+    }
+    let fk = await fileKeyFromUserPassword(password, U, UE);
+    if (!fk && OE) {
+      fk = await fileKeyFromOwnerPassword(password, O!, OE, U);
+    }
+    if (!fk) {
+      return {
+        ok: false,
+        encrypted: true,
+        needsPassword: true,
+        reason: 'Contraseña incorrecta',
+      };
+    }
+    key = fk; // 32 bytes — used directly for every object (no per-object key)
+  } else {
+    const keyLen = V >= 2 ? Math.floor(lengthBits / 8) : 5;
+    // Derive the file key from the supplied password and verify it (Alg. 6).
+    const k = computeKey(password, O!, P, id0);
+    key = keyLen === 16 ? k : k.subarray(0, keyLen);
+    // Verify: recompute U and compare to stored /U (first 16 bytes for R>=3).
+    const Ustored = asBytes(encDict.get(PDFName.of('U')));
+    if (Ustored && R >= 3) {
+      const Ucalc = computeU(key, id0);
+      const a = Array.from(Ucalc.subarray(0, 16));
+      const b = Array.from(Ustored.subarray(0, 16));
+      if (a.join(',') !== b.join(',')) {
+        return { ok: false, encrypted: true, needsPassword: true, reason: 'Contraseña incorrecta' };
+      }
     }
   }
 
@@ -146,6 +163,10 @@ export async function decryptPdf(
     num: number,
     gen: number,
   ): Promise<Uint8Array> {
+    if (aes256) {
+      // R6: the file key encrypts every object directly (AES-256-CBC).
+      return aesCbcDecrypt(key, data);
+    }
     if (useAes) {
       const okey = objectKey(key, num, gen); // includes sAlT
       return aesCbcDecrypt(okey, data);

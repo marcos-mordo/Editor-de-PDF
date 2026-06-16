@@ -32,6 +32,7 @@ import {
   bytesToHex,
   aesCbcEncrypt,
 } from './crypto-primitives';
+import { buildR6 } from './crypto-256';
 
 export interface Permissions {
   printing: boolean;
@@ -141,6 +142,8 @@ export async function encryptPdf(
     userPassword: string;
     ownerPassword?: string;
     permissions?: Permissions;
+    /** Use AES-256 (V5/R6, PDF 2.0) instead of AES-128 (V4/R4). */
+    aes256?: boolean;
   },
 ): Promise<void> {
   const ctx = doc.context;
@@ -152,14 +155,32 @@ export async function encryptPdf(
     modifying: true,
     annotating: true,
   };
+  const aes256 = !!opts.aes256;
 
-  // Stable document ID (first element feeds the key derivation).
+  // Stable document ID (first element feeds the V4 key derivation; for R6 it's
+  // informational but readers still expect a /ID).
   const id0 = randomBytes(16);
 
   const P = computeP(perm);
-  const O = computeO(ownerPw, userPw);
-  const fileKey = computeKey(userPw, O, P, id0);
-  const U = computeU(fileKey, id0);
+
+  // Key material differs per revision. In R6 every object is encrypted with the
+  // 32-byte file key directly (no per-object derivation); in R4 each object
+  // gets its own AESV2 key via Algorithm 1.
+  let O: Uint8Array;
+  let U: Uint8Array;
+  let fileKey: Uint8Array;
+  let r6: { UE: Uint8Array; OE: Uint8Array; Perms: Uint8Array } | null = null;
+  if (aes256) {
+    const m = await buildR6(userPw, ownerPw, P, true);
+    O = m.O;
+    U = m.U;
+    fileKey = m.fileKey;
+    r6 = { UE: m.UE, OE: m.OE, Perms: m.Perms };
+  } else {
+    O = computeO(ownerPw, userPw);
+    fileKey = computeKey(userPw, O, P, id0);
+    U = computeU(fileKey, id0);
+  }
 
   // Collect every indirect object BEFORE adding the /Encrypt dict so we never
   // encrypt the security dictionary itself.
@@ -207,7 +228,9 @@ export async function encryptPdf(
   }
 
   for (const [ref, obj] of objects) {
-    const key = objectKey(fileKey, ref.objectNumber, ref.generationNumber);
+    const key = aes256
+      ? fileKey
+      : objectKey(fileKey, ref.objectNumber, ref.generationNumber);
     if (obj instanceof PDFStream) {
       // Encrypt the stream's raw (already-filtered) bytes.
       if (obj instanceof PDFRawStream) {
@@ -229,25 +252,47 @@ export async function encryptPdf(
   await Promise.all(tasks);
 
   // Build and register the /Encrypt dictionary.
-  const cfDict = ctx.obj({
-    StdCF: ctx.obj({
-      CFM: PDFName.of('AESV2'),
-      Length: PDFNumber.of(KEY_LEN),
-      AuthEvent: PDFName.of('DocOpen'),
-    }),
-  });
-  const encryptDict = ctx.obj({
-    Filter: PDFName.of('Standard'),
-    V: PDFNumber.of(4),
-    R: PDFNumber.of(4),
-    Length: PDFNumber.of(KEY_LEN * 8),
-    CF: cfDict,
-    StmF: PDFName.of('StdCF'),
-    StrF: PDFName.of('StdCF'),
-    O: PDFHexString.of(bytesToHex(O)),
-    U: PDFHexString.of(bytesToHex(U)),
-    P: PDFNumber.of(P),
-  });
+  const encryptDict = aes256
+    ? ctx.obj({
+        Filter: PDFName.of('Standard'),
+        V: PDFNumber.of(5),
+        R: PDFNumber.of(6),
+        Length: PDFNumber.of(256),
+        CF: ctx.obj({
+          StdCF: ctx.obj({
+            CFM: PDFName.of('AESV3'),
+            Length: PDFNumber.of(32),
+            AuthEvent: PDFName.of('DocOpen'),
+          }),
+        }),
+        StmF: PDFName.of('StdCF'),
+        StrF: PDFName.of('StdCF'),
+        O: PDFHexString.of(bytesToHex(O)),
+        U: PDFHexString.of(bytesToHex(U)),
+        OE: PDFHexString.of(bytesToHex(r6!.OE)),
+        UE: PDFHexString.of(bytesToHex(r6!.UE)),
+        Perms: PDFHexString.of(bytesToHex(r6!.Perms)),
+        P: PDFNumber.of(P),
+        EncryptMetadata: true,
+      })
+    : ctx.obj({
+        Filter: PDFName.of('Standard'),
+        V: PDFNumber.of(4),
+        R: PDFNumber.of(4),
+        Length: PDFNumber.of(KEY_LEN * 8),
+        CF: ctx.obj({
+          StdCF: ctx.obj({
+            CFM: PDFName.of('AESV2'),
+            Length: PDFNumber.of(KEY_LEN),
+            AuthEvent: PDFName.of('DocOpen'),
+          }),
+        }),
+        StmF: PDFName.of('StdCF'),
+        StrF: PDFName.of('StdCF'),
+        O: PDFHexString.of(bytesToHex(O)),
+        U: PDFHexString.of(bytesToHex(U)),
+        P: PDFNumber.of(P),
+      });
   const encryptRef = ctx.register(encryptDict);
 
   // Wire up the trailer: /Encrypt reference + stable /ID.
