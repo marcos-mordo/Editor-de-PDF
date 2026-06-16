@@ -4,10 +4,13 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import './styles.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { PDFDocument } from 'pdf-lib';
 import { useDocument } from './stores/document';
 import { useTools } from './stores/tools';
 import { useAnnotations } from './stores/annotations';
 import { pdfjsLib } from './lib/pdfjs';
+import { savePdfWithEdits } from './features/save/save';
+import { encryptPdf } from './features/security/pdf-encrypt';
 
 // Debug exposure for smoke tests and runtime diagnostics.
 // Safe to ship — gives users a way to verify state via DevTools.
@@ -19,6 +22,18 @@ import { pdfjsLib } from './lib/pdfjs';
   },
   pdfjs: pdfjsLib,
   version: '0.1.0',
+  // Diagnostic: runs the exact production encryption path and returns the
+  // encrypted bytes (used by the automated interop test against pdf.js).
+  encryptTest: async (password: string): Promise<ArrayBuffer> => {
+    const edited = await savePdfWithEdits();
+    const d = await PDFDocument.load(edited, { ignoreEncryption: true });
+    await encryptPdf(d, { userPassword: password });
+    const out = await d.save({ useObjectStreams: false });
+    return out.buffer.slice(
+      out.byteOffset,
+      out.byteOffset + out.byteLength,
+    ) as ArrayBuffer;
+  },
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

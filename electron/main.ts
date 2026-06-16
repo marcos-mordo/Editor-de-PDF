@@ -322,6 +322,10 @@ function buildMenu(): void {
           label: 'Proteger con contraseña...',
           click: () => mainWindow?.webContents.send('menu:encrypt'),
         },
+        {
+          label: 'Reducir tamaño del PDF...',
+          click: () => mainWindow?.webContents.send('menu:compress'),
+        },
         { type: 'separator' },
         {
           label: 'Exportar a imágenes',
@@ -340,6 +344,17 @@ function buildMenu(): void {
     {
       label: 'Ayuda',
       submenu: [
+        {
+          label: 'Preferencias...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow?.webContents.send('menu:settings'),
+        },
+        {
+          label: 'Atajos de teclado',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => mainWindow?.webContents.send('menu:shortcuts'),
+        },
+        { type: 'separator' },
         {
           label: 'Acerca de Editor de PDF',
           click: () => mainWindow?.webContents.send('menu:about'),

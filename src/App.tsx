@@ -22,6 +22,10 @@ import { showHeaderFooterDialog } from './features/layout/HeaderFooterDialog';
 import { showInsertBlankDialog } from './features/pages/InsertBlankDialog';
 import { showCropDialog } from './features/pages/CropDialog';
 import { showPropertiesDialog } from './features/document/PropertiesDialog';
+import { showCompressDialog } from './features/convert/CompressDialog';
+import { showSettingsDialog } from './features/settings/SettingsDialog';
+import { showShortcutsDialog } from './features/settings/ShortcutsDialog';
+import { useSettings } from './stores/settings';
 import { printDocument } from './features/print/print';
 import { FindPanel, useSearch } from './features/find/FindPanel';
 import { exportToImages } from './features/convert/exportImages';
@@ -170,9 +174,33 @@ export default function App() {
       window.api.onMenuEvent('menu:find', () => useSearch.getState().setOpen(true)),
       window.api.onMenuEvent('menu:fit-width', () => fitWidth()),
       window.api.onMenuEvent('menu:fit-page', () => fitPage()),
+      window.api.onMenuEvent('menu:compress', () => showCompressDialog()),
+      window.api.onMenuEvent('menu:settings', () => showSettingsDialog()),
+      window.api.onMenuEvent('menu:shortcuts', () => showShortcutsDialog()),
     ];
     return () => offs.forEach((off) => off?.());
   }, [doc, loadFromBytes, zoomIn, zoomOut, zoomFit, fitWidth, fitPage, version]);
+
+  // Apply the user's default view + sidebar preference when a document opens.
+  useEffect(() => {
+    if (!doc) return;
+    const { defaultZoom, sidebarOnOpen } = useSettings.getState();
+    useTools.setState({ showSidebar: sidebarOnOpen });
+    // Wait for the viewer to report its size, then fit.
+    let tries = 0;
+    const apply = () => {
+      const size = useDocument.getState().viewerSize;
+      if (size.w > 0) {
+        if (defaultZoom === 'fit-width') fitWidth();
+        else if (defaultZoom === 'fit-page') fitPage();
+        else zoomFit();
+      } else if (tries++ < 20) {
+        setTimeout(apply, 40);
+      }
+    };
+    apply();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.id]);
 
   return (
     <div className="flex h-full flex-col bg-page-alt text-ink">
