@@ -28,6 +28,7 @@ import { showSignDialog, showVerifySignatureDialog } from './features/sign/SignD
 import { showBatesDialog } from './features/layout/BatesDialog';
 import { showBookmarksDialog } from './features/bookmarks/BookmarksDialog';
 import { showBatchDialog } from './features/batch/BatchDialog';
+import { showAttachmentsDialog } from './features/attachments/AttachmentsDialog';
 import { showSettingsDialog } from './features/settings/SettingsDialog';
 import { showShortcutsDialog } from './features/settings/ShortcutsDialog';
 import { useSettings } from './stores/settings';
@@ -182,6 +183,7 @@ export default function App() {
       window.api.onMenuEvent('menu:compress', () => showCompressDialog()),
       window.api.onMenuEvent('menu:compare', () => showCompareDialog()),
       window.api.onMenuEvent('menu:batch', () => showBatchDialog()),
+      window.api.onMenuEvent('menu:attachments', () => showAttachmentsDialog()),
       window.api.onMenuEvent('menu:bates', () => showBatesDialog()),
       window.api.onMenuEvent('menu:bookmarks', () => showBookmarksDialog()),
       window.api.onMenuEvent('menu:sign', () => showSignDialog()),

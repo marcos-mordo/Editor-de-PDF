@@ -29,6 +29,7 @@ const api = {
   openPdf: (opts) => ipcRenderer.invoke('dialog:open-pdf', opts || {}),
   openPdfByPath: (filePath) => ipcRenderer.invoke('fs:read-pdf', { filePath }),
   openImage: () => ipcRenderer.invoke('dialog:open-image'),
+  openFiles: () => ipcRenderer.invoke('dialog:open-files'),
   savePdf: (defaultName, data) =>
     ipcRenderer.invoke('dialog:save-pdf', { defaultName, data }),
   saveBinary: (defaultName, data, filters) =>

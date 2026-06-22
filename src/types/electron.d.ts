@@ -51,6 +51,7 @@ interface ElectronApi {
   openPdf(opts?: { multi?: boolean }): Promise<OpenedFile[] | null>;
   openPdfByPath(filePath: string): Promise<OpenedFile | null>;
   openImage(): Promise<OpenedImage | null>;
+  openFiles(): Promise<Array<{ name: string; data: ArrayBuffer }> | null>;
   savePdf(defaultName: string, data: ArrayBuffer): Promise<string | null>;
   saveBinary(
     defaultName: string,

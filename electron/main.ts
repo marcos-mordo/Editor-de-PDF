@@ -356,6 +356,10 @@ function buildMenu(): void {
           label: 'Procesamiento por lotes...',
           click: () => mainWindow?.webContents.send('menu:batch'),
         },
+        {
+          label: 'Adjuntar archivos...',
+          click: () => mainWindow?.webContents.send('menu:attachments'),
+        },
         { type: 'separator' },
         {
           label: 'Exportar a imágenes',
@@ -441,6 +445,27 @@ safeHandle('dialog:open-pdf', async (_e, opts: { multi?: boolean } = {}) => {
     }),
   );
   return files;
+});
+
+safeHandle('dialog:open-files', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar archivos a adjuntar',
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return Promise.all(
+    result.filePaths.map(async (p) => {
+      const data = await fsp.readFile(p);
+      return {
+        name: path.basename(p),
+        data: data.buffer.slice(
+          data.byteOffset,
+          data.byteOffset + data.byteLength,
+        ),
+      };
+    }),
+  );
 });
 
 safeHandle('dialog:open-image', async () => {
