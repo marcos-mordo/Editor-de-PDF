@@ -1,9 +1,28 @@
 ==============================================
-  EDITOR DE PDF v0.10.0
+  EDITOR DE PDF v0.11.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-(Confirmar version: Menu Ayuda -> Acerca de -> v0.10.0)
+(Confirmar version: Menu Ayuda -> Acerca de -> v0.11.0)
+
+
+==============================================
+ NOVEDADES v0.11.0
+==============================================
+
+ NUMERACION BATES (LEGAL)
+   Menu Herramientas -> Numeracion Bates.
+   Identificadores secuenciales de ancho fijo
+   (p. ej. ACME-000042) para expedientes legales y
+   empresariales: prefijo/sufijo, nº inicial, dígitos,
+   posicion por esquina, color y margen.
+
+ EDITOR DE MARCADORES (BOOKMARKS)
+   Menu Herramientas -> Editar marcadores.
+   Crea, renombra, reordena, anida (sangria) y elimina
+   marcadores. Se guardan en el PDF y aparecen en el
+   indice de Acrobat y cualquier lector. Precarga los
+   que ya tenga el documento.
 
 
 ==============================================
