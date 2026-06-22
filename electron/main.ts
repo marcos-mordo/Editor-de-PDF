@@ -319,6 +319,10 @@ function buildMenu(): void {
           label: 'Numeración Bates (legal)',
           click: () => mainWindow?.webContents.send('menu:bates'),
         },
+        {
+          label: 'Editar marcadores...',
+          click: () => mainWindow?.webContents.send('menu:bookmarks'),
+        },
         { type: 'separator' },
         {
           label: 'Marca de agua...',
