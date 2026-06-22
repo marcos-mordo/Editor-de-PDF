@@ -1,9 +1,28 @@
 ==============================================
-  EDITOR DE PDF v0.11.0
+  EDITOR DE PDF v0.12.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-(Confirmar version: Menu Ayuda -> Acerca de -> v0.11.0)
+(Confirmar version: Menu Ayuda -> Acerca de -> v0.12.0)
+
+
+==============================================
+ NOVEDADES v0.12.0
+==============================================
+
+ PROCESAMIENTO POR LOTES (Action Wizard)
+   Menu Herramientas -> Procesamiento por lotes.
+   Aplica una misma operacion a VARIOS PDFs de golpe y
+   los guarda en una carpeta, sin abrirlos uno a uno:
+   marca de agua, numeracion Bates (con numeracion
+   continua entre archivos) y cifrado. Barra de progreso.
+
+ ADJUNTAR ARCHIVOS AL PDF
+   Menu Herramientas -> Adjuntar archivos.
+   Incrusta cualquier archivo dentro del PDF (como
+   adjuntos de correo): viajan con el documento y
+   aparecen en el panel de adjuntos de Acrobat. Lista los
+   adjuntos existentes y permite extraerlos a disco.
 
 
 ==============================================
