@@ -4,6 +4,12 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import {
+  signPdfBuffer,
+  createSelfSignedP12,
+  verifyPdfSignature,
+  type SignOptions,
+} from './sign';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -323,6 +329,14 @@ function buildMenu(): void {
           click: () => mainWindow?.webContents.send('menu:encrypt'),
         },
         {
+          label: 'Firmar digitalmente...',
+          click: () => mainWindow?.webContents.send('menu:sign'),
+        },
+        {
+          label: 'Verificar firma...',
+          click: () => mainWindow?.webContents.send('menu:verify-signature'),
+        },
+        {
           label: 'Reducir tamaño del PDF...',
           click: () => mainWindow?.webContents.send('menu:compress'),
         },
@@ -518,6 +532,83 @@ safeHandle('fs:read-pdf', async (_e, { filePath }: { filePath: string }) => {
 
 safeHandle('app:get-version', async () => app.getVersion());
 safeHandle('app:get-platform', async () => process.platform);
+
+// ---- Digital signatures (PKCS#7) ----
+
+safeHandle('dialog:open-cert', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar identidad digital (.p12 / .pfx)',
+    filters: [{ name: 'Identidad digital', extensions: ['p12', 'pfx'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const p = result.filePaths[0];
+  const data = await fsp.readFile(p);
+  return {
+    name: path.basename(p),
+    data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+  };
+});
+
+safeHandle(
+  'pdf:sign',
+  async (
+    _e,
+    {
+      pdf,
+      p12,
+      passphrase,
+      opts,
+    }: { pdf: ArrayBuffer; p12: ArrayBuffer; passphrase: string; opts?: SignOptions },
+  ) => {
+    const signed = await signPdfBuffer(
+      Buffer.from(pdf),
+      Buffer.from(p12),
+      passphrase,
+      opts ?? {},
+    );
+    return signed.buffer.slice(
+      signed.byteOffset,
+      signed.byteOffset + signed.byteLength,
+    );
+  },
+);
+
+safeHandle(
+  'pdf:create-digital-id',
+  async (
+    _e,
+    {
+      info,
+      passphrase,
+    }: {
+      info: {
+        commonName: string;
+        organization?: string;
+        country?: string;
+        email?: string;
+        years?: number;
+      };
+      passphrase: string;
+    },
+  ) => {
+    if (!mainWindow) return null;
+    const p12 = createSelfSignedP12(info, passphrase);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Guardar identidad digital',
+      defaultPath: `${info.commonName.replace(/[^\w]+/g, '_') || 'identidad'}.p12`,
+      filters: [{ name: 'Identidad digital', extensions: ['p12'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await fsp.writeFile(result.filePath, p12);
+    return result.filePath;
+  },
+);
+
+safeHandle('pdf:verify-signature', async (_e, { pdf }: { pdf: ArrayBuffer }) => {
+  return verifyPdfSignature(Buffer.from(pdf));
+});
 
 // ============================================================
 // LIFECYCLE

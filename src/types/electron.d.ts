@@ -16,6 +16,37 @@ interface FileFilter {
   extensions: string[];
 }
 
+interface OpenedCert {
+  name: string;
+  data: ArrayBuffer;
+}
+
+interface SignOptions {
+  reason?: string;
+  location?: string;
+  contactInfo?: string;
+  name?: string;
+}
+
+interface DigitalIdInfo {
+  commonName: string;
+  organization?: string;
+  country?: string;
+  email?: string;
+  years?: number;
+}
+
+interface SignatureVerifyResult {
+  signed: boolean;
+  valid: boolean;
+  digestMatches: boolean;
+  coversWholeFile: boolean;
+  signerCommonName?: string;
+  reason?: string;
+  signedAt?: string;
+  error?: string;
+}
+
 interface ElectronApi {
   openPdf(opts?: { multi?: boolean }): Promise<OpenedFile[] | null>;
   openPdfByPath(filePath: string): Promise<OpenedFile | null>;
@@ -30,6 +61,18 @@ interface ElectronApi {
   writeFile(filePath: string, data: ArrayBuffer): Promise<boolean>;
   getVersion(): Promise<string>;
   getPlatform(): Promise<string>;
+  openCert(): Promise<OpenedCert | null>;
+  signPdf(
+    pdf: ArrayBuffer,
+    p12: ArrayBuffer,
+    passphrase: string,
+    opts?: SignOptions,
+  ): Promise<ArrayBuffer | null>;
+  createDigitalId(
+    info: DigitalIdInfo,
+    passphrase: string,
+  ): Promise<string | null>;
+  verifySignature(pdf: ArrayBuffer): Promise<SignatureVerifyResult | null>;
   onMenuEvent(channel: string, callback: () => void): () => void;
   _diagnostics(): {
     preloadLoaded: boolean;

@@ -42,6 +42,14 @@ const api = {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   getPlatform: () => ipcRenderer.invoke('app:get-platform'),
 
+  // Digital signatures (PKCS#7)
+  openCert: () => ipcRenderer.invoke('dialog:open-cert'),
+  signPdf: (pdf, p12, passphrase, opts) =>
+    ipcRenderer.invoke('pdf:sign', { pdf, p12, passphrase, opts }),
+  createDigitalId: (info, passphrase) =>
+    ipcRenderer.invoke('pdf:create-digital-id', { info, passphrase }),
+  verifySignature: (pdf) => ipcRenderer.invoke('pdf:verify-signature', { pdf }),
+
   // Menu events
   onMenuEvent: (channel, callback) => {
     const handler = () => callback();

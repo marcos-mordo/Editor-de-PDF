@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     // Unit tests run in Node — the modules under test are pure (no DOM).
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'electron/**/*.test.ts'],
     globals: true,
   },
 });
