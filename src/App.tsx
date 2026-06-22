@@ -27,6 +27,7 @@ import { showCompareDialog } from './features/compare/CompareDialog';
 import { showSignDialog, showVerifySignatureDialog } from './features/sign/SignDialog';
 import { showBatesDialog } from './features/layout/BatesDialog';
 import { showBookmarksDialog } from './features/bookmarks/BookmarksDialog';
+import { showBatchDialog } from './features/batch/BatchDialog';
 import { showSettingsDialog } from './features/settings/SettingsDialog';
 import { showShortcutsDialog } from './features/settings/ShortcutsDialog';
 import { useSettings } from './stores/settings';
@@ -180,6 +181,7 @@ export default function App() {
       window.api.onMenuEvent('menu:fit-page', () => fitPage()),
       window.api.onMenuEvent('menu:compress', () => showCompressDialog()),
       window.api.onMenuEvent('menu:compare', () => showCompareDialog()),
+      window.api.onMenuEvent('menu:batch', () => showBatchDialog()),
       window.api.onMenuEvent('menu:bates', () => showBatesDialog()),
       window.api.onMenuEvent('menu:bookmarks', () => showBookmarksDialog()),
       window.api.onMenuEvent('menu:sign', () => showSignDialog()),

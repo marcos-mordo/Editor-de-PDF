@@ -352,6 +352,10 @@ function buildMenu(): void {
           label: 'Comparar con otro PDF...',
           click: () => mainWindow?.webContents.send('menu:compare'),
         },
+        {
+          label: 'Procesamiento por lotes...',
+          click: () => mainWindow?.webContents.send('menu:batch'),
+        },
         { type: 'separator' },
         {
           label: 'Exportar a imágenes',
