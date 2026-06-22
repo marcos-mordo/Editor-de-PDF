@@ -315,6 +315,10 @@ function buildMenu(): void {
           label: 'Encabezado / Pie / Números de página',
           click: () => mainWindow?.webContents.send('menu:header-footer'),
         },
+        {
+          label: 'Numeración Bates (legal)',
+          click: () => mainWindow?.webContents.send('menu:bates'),
+        },
         { type: 'separator' },
         {
           label: 'Marca de agua...',

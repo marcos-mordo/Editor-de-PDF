@@ -25,6 +25,7 @@ import { showPropertiesDialog } from './features/document/PropertiesDialog';
 import { showCompressDialog } from './features/convert/CompressDialog';
 import { showCompareDialog } from './features/compare/CompareDialog';
 import { showSignDialog, showVerifySignatureDialog } from './features/sign/SignDialog';
+import { showBatesDialog } from './features/layout/BatesDialog';
 import { showSettingsDialog } from './features/settings/SettingsDialog';
 import { showShortcutsDialog } from './features/settings/ShortcutsDialog';
 import { useSettings } from './stores/settings';
@@ -178,6 +179,7 @@ export default function App() {
       window.api.onMenuEvent('menu:fit-page', () => fitPage()),
       window.api.onMenuEvent('menu:compress', () => showCompressDialog()),
       window.api.onMenuEvent('menu:compare', () => showCompareDialog()),
+      window.api.onMenuEvent('menu:bates', () => showBatesDialog()),
       window.api.onMenuEvent('menu:sign', () => showSignDialog()),
       window.api.onMenuEvent('menu:verify-signature', () => showVerifySignatureDialog()),
       window.api.onMenuEvent('menu:settings', () => showSettingsDialog()),
