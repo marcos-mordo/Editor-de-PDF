@@ -1,13 +1,49 @@
 ==============================================
-  EDITOR DE PDF v0.8.0
+  EDITOR DE PDF v0.10.0
   Alternativa libre a Adobe Acrobat
 ==============================================
 
-(Confirmar version: Menu Ayuda -> Acerca de -> v0.8.0)
+(Confirmar version: Menu Ayuda -> Acerca de -> v0.10.0)
 
 
 ==============================================
- NOVEDADES DE ESTA VERSION
+ NOVEDADES v0.10.0 (nivel Acrobat Pro)
+==============================================
+
+ FIRMA DIGITAL CON CERTIFICADO (PKCS#7)
+   Menu Herramientas -> Firmar digitalmente.
+   Firma el PDF con una identidad digital .p12/.pfx
+   (firma CMS detached, la misma que usa Adobe Acrobat).
+   Vincula el documento a tu identidad: cualquier cambio
+   posterior invalida la firma.
+   - ¿No tienes certificado? La app crea una identidad
+     autofirmada (RSA-2048) por ti.
+   - VERIFICAR FIRMA: Menu Herramientas -> Verificar
+     firma. Comprueba que la firma es valida y que el
+     documento no se ha alterado desde que se firmo.
+
+ CIFRADO AES-256 (PDF 2.0)
+   Ademas del AES-128, ahora el maximo nivel: AES-256
+   (V5/R6), recomendado por defecto. Verificado contra
+   el lector de Mozilla (pdf.js): abre con la contraseña
+   de usuario o de propietario.
+
+ HERRAMIENTAS DE MEDICION
+   Mide distancias y areas sobre planos/mapas con unidad
+   (mm/cm/in/pt) y escala de dibujo configurables.
+
+ CAMPOS DE FORMULARIO
+   Crea campos de texto, casillas y desplegables
+   interactivos y rellenables.
+
+ COMPARAR PDFs: AHORA TAMBIEN VISUAL
+   Junto a la comparacion de texto, modo Visual: resalta
+   en magenta los pixeles que cambian entre dos PDFs, con
+   % de diferencia por pagina.
+
+
+==============================================
+ NOVEDADES ANTERIORES
 ==============================================
 
  PROTECCION CON CONTRASENA REAL (AES-128)
